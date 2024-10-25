@@ -1,6 +1,8 @@
 // Architectural invariant: this module contains types that are useful for error
 // reporting and nothing else.
 
+use proc_macro2::{Span, TokenTree};
+
 use crate::{RepetitionQuantifierKind, Terminal, grammar::TokenDescription};
 
 /// An error that is generated when checking an incorrect macro.
@@ -14,7 +16,7 @@ use crate::{RepetitionQuantifierKind, Terminal, grammar::TokenDescription};
 /// [`check_macro`]: crate::check_macro
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum Error<Span> {
+pub enum Error {
     /// Generated when the macro definition itself doesn't parse correctly.
     ///
     /// The Rust compiler is likely to emit an error anyway. Below is an
@@ -108,6 +110,10 @@ pub enum Error<Span> {
         expected_nesting: Vec<RepetitionQuantifierKind>,
         /// The nesting encountered when the metavariable was used.
         got_nesting: Vec<RepetitionQuantifierKind>,
+    },
+
+    InvalidSeparator {
+        tree: TokenTree,
     },
 }
 
