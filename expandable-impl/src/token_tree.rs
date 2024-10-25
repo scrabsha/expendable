@@ -28,8 +28,9 @@ pub struct Repetition {
     pub span: proc_macro2::Span,
 }
 
+// TODO: make this private
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RepetitionId(usize);
+pub struct RepetitionId(pub(crate) usize);
 
 #[derive(Debug)]
 pub enum RepetitionCount {
