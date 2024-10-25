@@ -18,3 +18,4 @@ rust-grammar-dpdfa.workspace = true
 [dev-dependencies]
 # MSRV: 1.45 (crate-level documentation)
 expect-test = "1.4"
+quote = "1.0"

@@ -1,12 +1,6 @@
 // Architecture invariant: this module contains constructs that allow to
 // extract information out of macro matchers.
 
-// TODO:
-// - move it to the token_tree module
-// - make the parsing support both the matcher and the transcriber (w/
-//   additional context argument)
-// - id for repetition using context
-
 use std::{
     collections::HashMap,
     fmt::{self, Debug},

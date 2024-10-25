@@ -11,9 +11,9 @@ use crate::{Error, FragmentKind, MacroRuleNode};
 
 #[derive(Debug)]
 pub enum TokenTree {
-    Ident(proc_macro2::Ident),
-    Punct(proc_macro2::Punct),
-    Literal(proc_macro2::Literal),
+    Ident(Ident),
+    Punct(Punct),
+    Literal(Literal),
     Group(Group),
     Metavariable(Metavariable),
     Repetition(Repetition),
@@ -22,7 +22,7 @@ pub enum TokenTree {
 #[derive(Debug)]
 pub struct Group {
     pub content: Vec<TokenTree>,
-    pub delimiter: proc_macro2::Delimiter,
+    pub delimiter: Delimiter,
     pub span: Span,
 }
 
@@ -54,9 +54,8 @@ impl Separator {
     }
 }
 
-// TODO: make this private
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RepetitionId(pub(crate) usize);
+pub struct RepetitionId(usize);
 
 #[derive(Debug)]
 pub enum RepetitionCount {
@@ -67,7 +66,7 @@ pub enum RepetitionCount {
 
 #[derive(Debug)]
 pub struct Metavariable {
-    pub name: proc_macro2::Ident,
+    pub name: Ident,
     pub kind: FragmentKind,
     pub span: Span,
 }
@@ -185,16 +184,15 @@ impl TokenTree {
         let span = name.span();
         // $ident
 
-        let Some(token) = iter.next() else {
-            return Err(Error::UnexpectedEnd {
-                last_token: Some(span),
-            });
-        };
-
         let (kind, span) = match ctx.mode {
             // $ident:kind
             ParseMode::Matcher => {
                 // :
+                let Some(token) = iter.next() else {
+                    return Err(Error::UnexpectedEnd {
+                        last_token: Some(span),
+                    });
+                };
                 let GenericTokenTree::Punct(token) = token else {
                     return Err(Error::ParsingFailed {
                         what: vec![MacroRuleNode::FragmentName],
@@ -233,6 +231,12 @@ impl TokenTree {
                         where_: span,
                     });
                 };
+
+                let prev = ctx.metavariables.insert(name.clone(), kind);
+
+                if prev.is_some() {
+                    todo!("Redefinition of metavariable")
+                }
 
                 (kind, span)
             }
@@ -341,5 +345,206 @@ impl TokenTree {
             delimiter,
             span,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    macro_rules! test {
+        (fn $name:ident() { ($($matcher:tt)*) => {$($transcriber:tt)*}, $expected:expr $(,)? }) => {
+            #[test]
+            fn $name() {
+                let matcher = ::quote::quote! { $($matcher)* };
+                let transcriber = ::quote::quote! { $($transcriber)* };
+
+                let mut ctx = ParseCtxt::matcher();
+
+                let matcher = TokenTree::from_generic(&mut ctx, matcher);
+
+                let matcher = match matcher {
+                    Ok(matcher) => matcher,
+                    Err(err) => {
+                        let expected = $expected;
+                        expected.assert_debug_eq(&err);
+                        return;
+                    }
+                };
+
+                ctx.turn_into_transcriber();
+
+                let transcriber = TokenTree::from_generic(&mut ctx, transcriber);
+                let transcriber = match transcriber {
+                    Ok(transcriber) => transcriber,
+                    Err(err) => {
+                        let expected = $expected;
+                        expected.assert_debug_eq(&err);
+                        return;
+                    }
+                };
+
+                let expected = $expected;
+                expected.assert_debug_eq(&(matcher, transcriber));
+            }
+        };
+    }
+
+    test! {
+        fn both_empty() {
+            () => {},
+            expect_test::expect![[r#"
+                (
+                    [],
+                    [],
+                )
+            "#]],
+        }
+    }
+
+    test! {
+        fn simple_sequence() {
+            (a 1 b 2 ; + @) => { a 1 b 2 ; + @ },
+            expect_test::expect![[r#"
+                (
+                    [
+                        Ident(
+                            Ident(
+                                a,
+                            ),
+                        ),
+                        Literal(
+                            Literal {
+                                lit: 1,
+                            },
+                        ),
+                        Ident(
+                            Ident(
+                                b,
+                            ),
+                        ),
+                        Literal(
+                            Literal {
+                                lit: 2,
+                            },
+                        ),
+                        Punct(
+                            Punct {
+                                char: ';',
+                                spacing: Alone,
+                            },
+                        ),
+                        Punct(
+                            Punct {
+                                char: '+',
+                                spacing: Alone,
+                            },
+                        ),
+                        Punct(
+                            Punct {
+                                char: '@',
+                                spacing: Alone,
+                            },
+                        ),
+                    ],
+                    [
+                        Ident(
+                            Ident(
+                                a,
+                            ),
+                        ),
+                        Literal(
+                            Literal {
+                                lit: 1,
+                            },
+                        ),
+                        Ident(
+                            Ident(
+                                b,
+                            ),
+                        ),
+                        Literal(
+                            Literal {
+                                lit: 2,
+                            },
+                        ),
+                        Punct(
+                            Punct {
+                                char: ';',
+                                spacing: Alone,
+                            },
+                        ),
+                        Punct(
+                            Punct {
+                                char: '+',
+                                spacing: Alone,
+                            },
+                        ),
+                        Punct(
+                            Punct {
+                                char: '@',
+                                spacing: Alone,
+                            },
+                        ),
+                    ],
+                )
+            "#]],
+        }
+    }
+
+    test! {
+        fn super_simple_repetition() {
+            ( $( $a:ident )* ) => { $( $a )* },
+            expect_test::expect![[r#"
+                (
+                    [
+                        Repetition(
+                            Repetition {
+                                id: RepetitionId(
+                                    0,
+                                ),
+                                content: [
+                                    Metavariable(
+                                        Metavariable {
+                                            name: Ident(
+                                                a,
+                                            ),
+                                            kind: Ident,
+                                            span: Span,
+                                        },
+                                    ),
+                                ],
+                                separator: None,
+                                count: ZeroOrMore,
+                                span: Span,
+                            },
+                        ),
+                    ],
+                    [
+                        Repetition(
+                            Repetition {
+                                id: RepetitionId(
+                                    1,
+                                ),
+                                content: [
+                                    Metavariable(
+                                        Metavariable {
+                                            name: Ident(
+                                                a,
+                                            ),
+                                            kind: Ident,
+                                            span: Span,
+                                        },
+                                    ),
+                                ],
+                                separator: None,
+                                count: ZeroOrMore,
+                                span: Span,
+                            },
+                        ),
+                    ],
+                )
+            "#]],
+        }
     }
 }
