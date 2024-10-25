@@ -1,3 +1,5 @@
+#![allow(missing_docs)] // TODO: write docs
+
 use crate::FragmentKind;
 
 #[derive(Debug)]
