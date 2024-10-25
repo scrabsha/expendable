@@ -1,5 +1,7 @@
 #![allow(missing_docs)] // TODO: write docs
 
+use std::collections::HashMap;
+
 use proc_macro2::{
     Delimiter, Group as GenericGroup, Ident, Literal, Punct, Span,
     TokenStream as GenericTokenStream, TokenTree as GenericTokenTree,
@@ -70,14 +72,32 @@ pub struct Metavariable {
     pub span: Span,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
-struct ParseCtxt {
+pub(crate) struct ParseCtxt {
     counter: usize,
+    mode: ParseMode,
+    metavariables: HashMap<Ident, FragmentKind>,
 }
 
 impl ParseCtxt {
-    fn new() -> ParseCtxt {
-        Default::default()
+    pub(crate) fn matcher() -> ParseCtxt {
+        let mode = ParseMode::Matcher;
+        ParseCtxt {
+            counter: 0,
+            mode,
+            metavariables: HashMap::new(),
+        }
+    }
+
+    pub(crate) fn turn_into_transcriber(&mut self) {
+        self.mode = ParseMode::Transcriber;
+    }
+
+    fn with_mode(mode: ParseMode) -> ParseCtxt {
+        ParseCtxt {
+            counter: 0,
+            mode,
+            metavariables: HashMap::new(),
+        }
     }
 
     fn id(&mut self) -> RepetitionId {
@@ -88,12 +108,18 @@ impl ParseCtxt {
     }
 }
 
-impl TokenTree {
-    pub(crate) fn from_generic(tokens: GenericTokenStream) -> Result<Vec<TokenTree>, Error> {
-        let mut ctx = ParseCtxt::new();
-        let mut iter = tokens.into_iter();
+enum ParseMode {
+    Matcher,
+    Transcriber,
+}
 
-        Self::parse_seq(&mut ctx, &mut iter)
+impl TokenTree {
+    pub(crate) fn from_generic(
+        ctx: &mut ParseCtxt,
+        tokens: GenericTokenStream,
+    ) -> Result<Vec<TokenTree>, Error> {
+        let mut iter = tokens.into_iter();
+        Self::parse_seq(ctx, &mut iter)
     }
 
     fn parse_seq(
@@ -151,8 +177,7 @@ impl TokenTree {
     }
 
     fn parse_fragment(
-        // Useless, but kept because this allows all the functions to look the same.
-        _ctx: &mut ParseCtxt,
+        ctx: &mut ParseCtxt,
         iter: &mut impl Iterator<Item = GenericTokenTree>,
         name: Ident,
         // TODO
@@ -166,47 +191,66 @@ impl TokenTree {
             });
         };
 
-        // :
-        let GenericTokenTree::Punct(token) = token else {
-            return Err(Error::ParsingFailed {
-                what: vec![MacroRuleNode::FragmentName],
-                where_: token.span(),
-            });
+        let (kind, span) = match ctx.mode {
+            // $ident:kind
+            ParseMode::Matcher => {
+                // :
+                let GenericTokenTree::Punct(token) = token else {
+                    return Err(Error::ParsingFailed {
+                        what: vec![MacroRuleNode::FragmentName],
+                        where_: token.span(),
+                    });
+                };
+
+                if token.as_char() != ':' {
+                    return Err(Error::ParsingFailed {
+                        what: vec![MacroRuleNode::FragmentName],
+                        where_: token.span(),
+                    });
+                }
+                // TODO: we want to be able to expand the span somehow.
+                let span = token.span();
+
+                // $ident:
+
+                let Some(token) = iter.next() else {
+                    return Err(Error::UnexpectedEnd {
+                        last_token: Some(span),
+                    });
+                };
+
+                let span = token.span();
+                let GenericTokenTree::Ident(ident) = token else {
+                    return Err(Error::ParsingFailed {
+                        what: vec![MacroRuleNode::FragmentSpecifier],
+                        where_: token.span(),
+                    });
+                };
+
+                let Ok(kind) = ident.to_string().parse() else {
+                    return Err(Error::ParsingFailed {
+                        what: vec![MacroRuleNode::FragmentSpecifier],
+                        where_: span,
+                    });
+                };
+
+                (kind, span)
+            }
+
+            // $ident (kind obtained from the symbol table).
+            ParseMode::Transcriber => {
+                let span = name.span();
+                let kind =
+                    *ctx.metavariables
+                        .get(&name)
+                        .ok_or_else(|| Error::UnboundMetavariable {
+                            name: name.to_string(),
+                            where_: span,
+                        })?;
+
+                (kind, span)
+            }
         };
-
-        if token.as_char() != ':' {
-            return Err(Error::ParsingFailed {
-                what: vec![MacroRuleNode::FragmentName],
-                where_: token.span(),
-            });
-        }
-        // TODO: we want to be able to expand the span somehow.
-        let span = token.span();
-
-        // $ident:
-
-        let Some(token) = iter.next() else {
-            return Err(Error::UnexpectedEnd {
-                last_token: Some(span),
-            });
-        };
-
-        let span = token.span();
-        let GenericTokenTree::Ident(ident) = token else {
-            return Err(Error::ParsingFailed {
-                what: vec![MacroRuleNode::FragmentSpecifier],
-                where_: token.span(),
-            });
-        };
-
-        let Ok(kind) = ident.to_string().parse() else {
-            return Err(Error::ParsingFailed {
-                what: vec![MacroRuleNode::FragmentSpecifier],
-                where_: span,
-            });
-        };
-
-        // $ident:kind
 
         Ok(TokenTree::Metavariable(Metavariable { name, kind, span }))
     }
@@ -246,15 +290,13 @@ impl TokenTree {
 
                 GenericTokenTree::Punct(punct) => Ok(Err(Separator::Punct(punct))),
 
-                GenericTokenTree::Group(_) => {
-                    return Err(Error::ParsingFailed {
-                        what: vec![
-                            MacroRuleNode::RepetitionSeparator,
-                            MacroRuleNode::RepetitionQuantifier,
-                        ],
-                        where_: token.span(),
-                    });
-                }
+                GenericTokenTree::Group(_) => Err(Error::ParsingFailed {
+                    what: vec![
+                        MacroRuleNode::RepetitionSeparator,
+                        MacroRuleNode::RepetitionQuantifier,
+                    ],
+                    where_: token.span(),
+                }),
             }
         };
 
