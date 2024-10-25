@@ -1,3 +1,5 @@
+use crate::FragmentKind;
+
 #[derive(Debug)]
 pub enum TokenTree {
     Ident(proc_macro2::Ident),
