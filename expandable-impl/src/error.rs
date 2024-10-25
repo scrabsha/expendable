@@ -16,7 +16,7 @@ use crate::{RepetitionQuantifierKind, Terminal, grammar::TokenDescription};
 /// [`check_macro`]: crate::check_macro
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum Error {
+pub enum Error<Span = proc_macro2::Span> {
     /// Generated when the macro definition itself doesn't parse correctly.
     ///
     /// The Rust compiler is likely to emit an error anyway. Below is an
