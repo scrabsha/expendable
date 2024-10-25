@@ -8,7 +8,7 @@ pub enum TokenTree {
     Punct(proc_macro2::Punct),
     Literal(proc_macro2::Literal),
     Group(Group),
-    Metavariable(proc_macro2::Literal),
+    Metavariable(Metavariable),
     Repetition(Repetition),
 }
 
