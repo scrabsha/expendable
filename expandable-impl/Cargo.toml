@@ -12,6 +12,7 @@ license.workspace = true
 [dependencies]
 # MSRV: 1.36 (checked in CI)
 smallvec = "1.11"
+proc-macro2 = "1.0.89"
 rust-grammar-dpdfa.workspace = true
 
 [dev-dependencies]

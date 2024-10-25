@@ -90,6 +90,7 @@ mod grammar;
 mod list;
 mod matcher;
 mod repetition_stack;
+pub mod token_tree;
 
 #[doc(hidden)]
 pub mod span;
