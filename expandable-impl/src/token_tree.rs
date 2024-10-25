@@ -266,6 +266,8 @@ impl TokenTree {
     ) -> Result<TokenTree, Error> {
         let span = group.span();
 
+        let id = ctx.id();
+
         let content = TokenTree::parse_group(ctx, group)?.content;
 
         let mut try_parse_quantifier = || {
@@ -321,8 +323,6 @@ impl TokenTree {
                 },
             }
         };
-
-        let id = ctx.id();
 
         Ok(TokenTree::Repetition(Repetition {
             id,
@@ -409,23 +409,25 @@ mod tests {
                 (
                     [
                         Ident(
-                            Ident(
-                                a,
-                            ),
+                            Ident {
+                                sym: a,
+                            },
                         ),
                         Literal(
                             Literal {
                                 lit: 1,
+                                span: bytes(1..2),
                             },
                         ),
                         Ident(
-                            Ident(
-                                b,
-                            ),
+                            Ident {
+                                sym: b,
+                            },
                         ),
                         Literal(
                             Literal {
                                 lit: 2,
+                                span: bytes(3..4),
                             },
                         ),
                         Punct(
@@ -449,23 +451,25 @@ mod tests {
                     ],
                     [
                         Ident(
-                            Ident(
-                                a,
-                            ),
+                            Ident {
+                                sym: a,
+                            },
                         ),
                         Literal(
                             Literal {
                                 lit: 1,
+                                span: bytes(5..6),
                             },
                         ),
                         Ident(
-                            Ident(
-                                b,
-                            ),
+                            Ident {
+                                sym: b,
+                            },
                         ),
                         Literal(
                             Literal {
                                 lit: 2,
+                                span: bytes(7..8),
                             },
                         ),
                         Punct(
@@ -506,17 +510,17 @@ mod tests {
                                 content: [
                                     Metavariable(
                                         Metavariable {
-                                            name: Ident(
-                                                a,
-                                            ),
+                                            name: Ident {
+                                                sym: a,
+                                            },
                                             kind: Ident,
-                                            span: Span,
+                                            span: bytes(0..0),
                                         },
                                     ),
                                 ],
                                 separator: None,
                                 count: ZeroOrMore,
-                                span: Span,
+                                span: bytes(0..0),
                             },
                         ),
                     ],
@@ -529,22 +533,212 @@ mod tests {
                                 content: [
                                     Metavariable(
                                         Metavariable {
-                                            name: Ident(
-                                                a,
-                                            ),
+                                            name: Ident {
+                                                sym: a,
+                                            },
                                             kind: Ident,
-                                            span: Span,
+                                            span: bytes(0..0),
                                         },
                                     ),
                                 ],
                                 separator: None,
                                 count: ZeroOrMore,
-                                span: Span,
+                                span: bytes(0..0),
                             },
                         ),
                     ],
                 )
             "#]],
+        }
+    }
+
+    test! {
+        fn random_complicated_test() {
+            ($($foo:ident $($bar:ident)*)*) => { $($($foo $bar)*)* },
+            expect_test::expect![[r#"
+                (
+                    [
+                        Repetition(
+                            Repetition {
+                                id: RepetitionId(
+                                    0,
+                                ),
+                                content: [
+                                    Metavariable(
+                                        Metavariable {
+                                            name: Ident {
+                                                sym: foo,
+                                            },
+                                            kind: Ident,
+                                            span: bytes(0..0),
+                                        },
+                                    ),
+                                    Repetition(
+                                        Repetition {
+                                            id: RepetitionId(
+                                                1,
+                                            ),
+                                            content: [
+                                                Metavariable(
+                                                    Metavariable {
+                                                        name: Ident {
+                                                            sym: bar,
+                                                        },
+                                                        kind: Ident,
+                                                        span: bytes(0..0),
+                                                    },
+                                                ),
+                                            ],
+                                            separator: None,
+                                            count: ZeroOrMore,
+                                            span: bytes(0..0),
+                                        },
+                                    ),
+                                ],
+                                separator: None,
+                                count: ZeroOrMore,
+                                span: bytes(0..0),
+                            },
+                        ),
+                    ],
+                    [
+                        Repetition(
+                            Repetition {
+                                id: RepetitionId(
+                                    2,
+                                ),
+                                content: [
+                                    Repetition(
+                                        Repetition {
+                                            id: RepetitionId(
+                                                3,
+                                            ),
+                                            content: [
+                                                Metavariable(
+                                                    Metavariable {
+                                                        name: Ident {
+                                                            sym: foo,
+                                                        },
+                                                        kind: Ident,
+                                                        span: bytes(0..0),
+                                                    },
+                                                ),
+                                                Metavariable(
+                                                    Metavariable {
+                                                        name: Ident {
+                                                            sym: bar,
+                                                        },
+                                                        kind: Ident,
+                                                        span: bytes(0..0),
+                                                    },
+                                                ),
+                                            ],
+                                            separator: None,
+                                            count: ZeroOrMore,
+                                            span: bytes(0..0),
+                                        },
+                                    ),
+                                ],
+                                separator: None,
+                                count: ZeroOrMore,
+                                span: bytes(0..0),
+                            },
+                        ),
+                    ],
+                )
+            "#]],
+        }
+    }
+
+    test! {
+        fn group_nesting() {
+            ([ bracket ] { brace } ( parethensis )) => {( parenthesis ) { brace } [ bracket ]},
+            expect_test::expect![[r#"
+                (
+                    [
+                        Group(
+                            Group {
+                                content: [
+                                    Ident(
+                                        Ident {
+                                            sym: bracket,
+                                        },
+                                    ),
+                                ],
+                                delimiter: Bracket,
+                                span: bytes(0..0),
+                            },
+                        ),
+                        Group(
+                            Group {
+                                content: [
+                                    Ident(
+                                        Ident {
+                                            sym: brace,
+                                        },
+                                    ),
+                                ],
+                                delimiter: Brace,
+                                span: bytes(0..0),
+                            },
+                        ),
+                        Group(
+                            Group {
+                                content: [
+                                    Ident(
+                                        Ident {
+                                            sym: parethensis,
+                                        },
+                                    ),
+                                ],
+                                delimiter: Parenthesis,
+                                span: bytes(0..0),
+                            },
+                        ),
+                    ],
+                    [
+                        Group(
+                            Group {
+                                content: [
+                                    Ident(
+                                        Ident {
+                                            sym: parenthesis,
+                                        },
+                                    ),
+                                ],
+                                delimiter: Parenthesis,
+                                span: bytes(0..0),
+                            },
+                        ),
+                        Group(
+                            Group {
+                                content: [
+                                    Ident(
+                                        Ident {
+                                            sym: brace,
+                                        },
+                                    ),
+                                ],
+                                delimiter: Brace,
+                                span: bytes(0..0),
+                            },
+                        ),
+                        Group(
+                            Group {
+                                content: [
+                                    Ident(
+                                        Ident {
+                                            sym: bracket,
+                                        },
+                                    ),
+                                ],
+                                delimiter: Bracket,
+                                span: bytes(0..0),
+                            },
+                        ),
+                    ],
+                )
+            "#]]
         }
     }
 }
