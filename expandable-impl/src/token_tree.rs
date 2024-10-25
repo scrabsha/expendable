@@ -19,11 +19,15 @@ pub struct Group {
 
 #[derive(Debug)]
 pub struct Repetition {
+    pub id: RepetitionId,
     pub content: Vec<TokenTree>,
     pub separator: Option<proc_macro2::Punct>,
     pub count: RepetitionCount,
     pub span: proc_macro2::Span,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct RepetitionId(usize);
 
 #[derive(Debug)]
 pub enum RepetitionCount {
