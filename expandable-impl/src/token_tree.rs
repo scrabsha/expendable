@@ -41,7 +41,7 @@ pub enum RepetitionCount {
 
 #[derive(Debug)]
 pub struct Metavariable {
-    pub name: proc_macro2::Literal,
+    pub name: proc_macro2::Ident,
     pub kind: FragmentKind,
     pub span: proc_macro2::Span,
 }
