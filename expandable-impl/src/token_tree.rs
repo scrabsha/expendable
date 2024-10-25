@@ -1,6 +1,6 @@
 #![allow(missing_docs)] // TODO: write docs
 
-use proc_macro2::{Ident, Literal, Punct};
+use proc_macro2::{Ident, Literal, Punct, Spacing, Span, TokenTree as GenericTokenTree};
 
 use crate::FragmentKind;
 
@@ -18,7 +18,7 @@ pub enum TokenTree {
 pub struct Group {
     pub content: Vec<TokenTree>,
     pub delimiter: proc_macro2::Delimiter,
-    pub span: proc_macro2::Span,
+    pub span: Span,
 }
 
 #[derive(Debug)]
@@ -27,7 +27,7 @@ pub struct Repetition {
     pub content: Vec<TokenTree>,
     pub separator: Separator,
     pub count: RepetitionCount,
-    pub span: proc_macro2::Span,
+    pub span: Span,
 }
 
 #[derive(Debug)]
@@ -49,9 +49,24 @@ pub enum RepetitionCount {
     OneOrMore,
 }
 
+impl RepetitionCount {
+    pub(crate) fn to_token_tree(&self, span: Span) -> GenericTokenTree {
+        let ch = match self {
+            RepetitionCount::AtMostOne => '?',
+            RepetitionCount::ZeroOrMore => '*',
+            RepetitionCount::OneOrMore => '+',
+        };
+
+        let mut punct = Punct::new(ch, Spacing::Alone);
+        punct.set_span(span);
+
+        punct.into()
+    }
+}
+
 #[derive(Debug)]
 pub struct Metavariable {
     pub name: proc_macro2::Ident,
     pub kind: FragmentKind,
-    pub span: proc_macro2::Span,
+    pub span: Span,
 }
