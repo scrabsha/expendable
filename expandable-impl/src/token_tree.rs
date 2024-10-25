@@ -1,5 +1,7 @@
 #![allow(missing_docs)] // TODO: write docs
 
+use proc_macro2::{Ident, Literal, Punct};
+
 use crate::FragmentKind;
 
 #[derive(Debug)]
@@ -23,9 +25,17 @@ pub struct Group {
 pub struct Repetition {
     pub id: RepetitionId,
     pub content: Vec<TokenTree>,
-    pub separator: Option<proc_macro2::Punct>,
+    pub separator: Separator,
     pub count: RepetitionCount,
     pub span: proc_macro2::Span,
+}
+
+#[derive(Debug)]
+pub enum Separator {
+    Ident(Ident),
+    Punct(Punct),
+    Literal(Literal),
+    None,
 }
 
 // TODO: make this private
