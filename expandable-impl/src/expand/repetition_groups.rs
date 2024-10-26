@@ -1,23 +1,22 @@
 //! Create groups of repetitions that repeat the same number of times.
 //!
-//! When expanding a macro, if a metavariable is repeated `n` times, *all*
-//! repetitions containing it will repeat exactly `n` times.
+//! When expanding a macro, if a metavariable is repeated `n` times, *all* repetitions containing
+//! it will repeat exactly `n` times.
 //!
-//! This is transitive: if you have two metavariables `$a` and `$b`, `$a`
-//! repeats `n` times, and there is a repetition referencing both `$a` and `$b`,
-//! `$b` will also repeat `n` times.
+//! This is transitive: if you have two metavariables `$a` and `$b`, `$a` repeats `n` times, and
+//! there is a repetition referencing both `$a` and `$b`, `$b` will also repeat `n` times.
 //!
-//! Knowing this information allows to greatly constrain the amount of
-//! expansions `expandable` has to check. For the transcriber `$($a $b)* $($a)*
-//! $($b)*`, this module shows that if the first repetition is repeated `n`
-//! times all other repetitions will only repeat exactly `n` times.
+//! Knowing this allows to greatly constrain the amount of expansions `expandable-impl` has to
+//! check. For the transcriber `$($a $b)* $($a)* $($b)*`, this module shows that if the first
+//! repetition is repeated `n` times all other repetitions will only repeat exactly `n` times.
 //!
-//! Note that the grouping can only happen at the same repetition depth: a
-//! metavariable defined at depth 1 cannot be grouped with a metavariable
-//! defined at depth 2, even if they are both used inside of the same
-//! repetition. This is because a metavariable affect how many times the
-//! repetition at the metavariable *definition* depth is repeated, not how many
-//! times the repetition at the metavariable *usage* depth is repeated.
+//! Note that the grouping can only happen at the same repetition depth: a metavariable defined at
+//! depth 1 cannot be grouped with a metavariable defined at depth 2, even if they are both used
+//! inside of the same repetition. This is because a metavariable affect how many times the
+//! repetition at the metavariable *definition* depth is repeated, not how many times the
+//! repetition at the metavariable *usage* depth is repeated.
+
+// TODO: vocabulary - lower and higher depth is confusing
 
 use std::collections::BTreeMap;
 
@@ -221,9 +220,9 @@ fn metavar_definitions(matcher: &[TokenTree]) -> BTreeMap<String, MetavarDefinit
             TokenTree::Metavariable(meta) => {
                 let name = meta.name.to_string();
 
-                // Note that this assumes another part of expandable will check whether the
-                // metavariable names are unique. If you encounter this panic it means the rest
-                // of expandable is not performing the check.
+                // Note that this assumes another part of `expandable-impl` will check whether the
+                // metavariable names are unique. If you encounter this panic it means the rest of
+                // `expandable-impl` is not performing the check.
                 assert!(
                     !result.contains_key(&name),
                     "duplicate metavariable name {name}"
@@ -393,19 +392,19 @@ mod tests {
             "foo $bar:ident [ foo $($foo:ident $baz:ident $($quux:ident),*)* ]",
             expect![[r#"
                 {
-                    "bar": Definition {
+                    "bar": MetavarDefinition {
                         span: span( $bar:ident ),
                         depth: 0,
                     },
-                    "baz": Definition {
+                    "baz": MetavarDefinition {
                         span: span( $baz:ident ),
                         depth: 1,
                     },
-                    "foo": Definition {
+                    "foo": MetavarDefinition {
                         span: span( $foo:ident ),
                         depth: 1,
                     },
-                    "quux": Definition {
+                    "quux": MetavarDefinition {
                         span: span( $quux:ident ),
                         depth: 2,
                     },
