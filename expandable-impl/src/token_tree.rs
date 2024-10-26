@@ -381,6 +381,7 @@ impl TokenTree {
         })
     }
 
+    #[cfg_attr(not(test), expect(dead_code))] // TODO: use it
     pub(crate) fn into_generic(stream: Vec<TokenTree>, mode: ParseMode) -> GenericTokenStream {
         stream
             .into_iter()
