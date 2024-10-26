@@ -759,12 +759,12 @@ mod tests {
                         Repetition(
                             Repetition {
                                 id: repetition 0,
-                                dollar: bytes(1..2),
+                                dollar: span($),
                                 paren: bytes(0..0),
                                 content: [
                                     Metavariable(
                                         Metavariable {
-                                            dollar: bytes(3..4),
+                                            dollar: span($),
                                             name: Ident {
                                                 sym: a,
                                             },
@@ -790,12 +790,12 @@ mod tests {
                         Repetition(
                             Repetition {
                                 id: repetition 1,
-                                dollar: bytes(5..6),
+                                dollar: span($),
                                 paren: bytes(0..0),
                                 content: [
                                     Metavariable(
                                         Metavariable {
-                                            dollar: bytes(7..8),
+                                            dollar: span($),
                                             name: Ident {
                                                 sym: a,
                                             },
@@ -881,12 +881,12 @@ mod tests {
                         Repetition(
                             Repetition {
                                 id: repetition 0,
-                                dollar: bytes(1..2),
+                                dollar: span($),
                                 paren: bytes(0..0),
                                 content: [
                                     Metavariable(
                                         Metavariable {
-                                            dollar: bytes(3..4),
+                                            dollar: span($),
                                             name: Ident {
                                                 sym: foo,
                                             },
@@ -903,12 +903,12 @@ mod tests {
                                     Repetition(
                                         Repetition {
                                             id: repetition 1,
-                                            dollar: bytes(5..6),
+                                            dollar: span($),
                                             paren: bytes(0..0),
                                             content: [
                                                 Metavariable(
                                                     Metavariable {
-                                                        dollar: bytes(7..8),
+                                                        dollar: span($),
                                                         name: Ident {
                                                             sym: bar,
                                                         },
@@ -941,18 +941,18 @@ mod tests {
                         Repetition(
                             Repetition {
                                 id: repetition 2,
-                                dollar: bytes(9..10),
+                                dollar: span($),
                                 paren: bytes(0..0),
                                 content: [
                                     Repetition(
                                         Repetition {
                                             id: repetition 3,
-                                            dollar: bytes(11..12),
+                                            dollar: span($),
                                             paren: bytes(0..0),
                                             content: [
                                                 Metavariable(
                                                     Metavariable {
-                                                        dollar: bytes(13..14),
+                                                        dollar: span($),
                                                         name: Ident {
                                                             sym: foo,
                                                         },
@@ -963,7 +963,7 @@ mod tests {
                                                 ),
                                                 Metavariable(
                                                     Metavariable {
-                                                        dollar: bytes(15..16),
+                                                        dollar: span($),
                                                         name: Ident {
                                                             sym: bar,
                                                         },
