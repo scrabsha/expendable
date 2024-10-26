@@ -376,8 +376,8 @@ mod tests {
                 Err(
                     MetavariableDefinedAtLowerDepth {
                         name: "foo",
-                        definition_span: span($foo:ident),
-                        usage_span: span($foo),
+                        definition_span: span( $foo:ident ),
+                        usage_span: span( $foo ),
                         definition_depth: 1,
                         usage_depth: 0,
                     },
@@ -394,7 +394,7 @@ mod tests {
             expect![[r#"
                 Err(
                     RepetitionWithoutMetavariables {
-                        span: span((1,)),
+                        span: span( (1,) ),
                     },
                 )
             "#]],
@@ -408,19 +408,19 @@ mod tests {
             expect![[r#"
                 {
                     "bar": Definition {
-                        span: span($bar:ident),
+                        span: span( $bar:ident ),
                         depth: 0,
                     },
                     "baz": Definition {
-                        span: span($baz:ident),
+                        span: span( $baz:ident ),
                         depth: 1,
                     },
                     "foo": Definition {
-                        span: span($foo:ident),
+                        span: span( $foo:ident ),
                         depth: 1,
                     },
                     "quux": Definition {
-                        span: span($quux:ident),
+                        span: span( $quux:ident ),
                         depth: 2,
                     },
                 }

@@ -123,7 +123,7 @@ impl Into<GenericSpan> for Span {
 impl std::fmt::Debug for Span {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(text) = self.inner.source_text() {
-            write!(f, "span({text})")
+            write!(f, "span( {text} )")
         } else {
             std::fmt::Debug::fmt(&self.inner, f)
         }
@@ -761,12 +761,12 @@ mod tests {
                         Repetition(
                             Repetition {
                                 id: repetition 0,
-                                dollar: span($),
+                                dollar: span( $ ),
                                 paren: bytes(0..0),
                                 content: [
                                     Metavariable(
                                         Metavariable {
-                                            dollar: span($),
+                                            dollar: span( $ ),
                                             name: Ident {
                                                 sym: a,
                                             },
@@ -777,7 +777,7 @@ mod tests {
                                                     bytes(0..0),
                                                 ),
                                             ),
-                                            span: span($),
+                                            span: span( $ ),
                                         },
                                     ),
                                 ],
@@ -792,18 +792,18 @@ mod tests {
                         Repetition(
                             Repetition {
                                 id: repetition 1,
-                                dollar: span($),
+                                dollar: span( $ ),
                                 paren: bytes(0..0),
                                 content: [
                                     Metavariable(
                                         Metavariable {
-                                            dollar: span($),
+                                            dollar: span( $ ),
                                             name: Ident {
                                                 sym: a,
                                             },
                                             kind: Ident,
                                             matcher_spans: None,
-                                            span: span($),
+                                            span: span( $ ),
                                         },
                                     ),
                                 ],
@@ -883,12 +883,12 @@ mod tests {
                         Repetition(
                             Repetition {
                                 id: repetition 0,
-                                dollar: span($),
+                                dollar: span( $ ),
                                 paren: bytes(0..0),
                                 content: [
                                     Metavariable(
                                         Metavariable {
-                                            dollar: span($),
+                                            dollar: span( $ ),
                                             name: Ident {
                                                 sym: foo,
                                             },
@@ -899,18 +899,18 @@ mod tests {
                                                     bytes(0..0),
                                                 ),
                                             ),
-                                            span: span($),
+                                            span: span( $ ),
                                         },
                                     ),
                                     Repetition(
                                         Repetition {
                                             id: repetition 1,
-                                            dollar: span($),
+                                            dollar: span( $ ),
                                             paren: bytes(0..0),
                                             content: [
                                                 Metavariable(
                                                     Metavariable {
-                                                        dollar: span($),
+                                                        dollar: span( $ ),
                                                         name: Ident {
                                                             sym: bar,
                                                         },
@@ -921,7 +921,7 @@ mod tests {
                                                                 bytes(0..0),
                                                             ),
                                                         ),
-                                                        span: span($),
+                                                        span: span( $ ),
                                                     },
                                                 ),
                                             ],
@@ -943,35 +943,35 @@ mod tests {
                         Repetition(
                             Repetition {
                                 id: repetition 2,
-                                dollar: span($),
+                                dollar: span( $ ),
                                 paren: bytes(0..0),
                                 content: [
                                     Repetition(
                                         Repetition {
                                             id: repetition 3,
-                                            dollar: span($),
+                                            dollar: span( $ ),
                                             paren: bytes(0..0),
                                             content: [
                                                 Metavariable(
                                                     Metavariable {
-                                                        dollar: span($),
+                                                        dollar: span( $ ),
                                                         name: Ident {
                                                             sym: foo,
                                                         },
                                                         kind: Ident,
                                                         matcher_spans: None,
-                                                        span: span($),
+                                                        span: span( $ ),
                                                     },
                                                 ),
                                                 Metavariable(
                                                     Metavariable {
-                                                        dollar: span($),
+                                                        dollar: span( $ ),
                                                         name: Ident {
                                                             sym: bar,
                                                         },
                                                         kind: Ident,
                                                         matcher_spans: None,
-                                                        span: span($),
+                                                        span: span( $ ),
                                                     },
                                                 ),
                                             ],
