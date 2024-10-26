@@ -3,11 +3,12 @@
 use std::{collections::HashMap, iter};
 
 use proc_macro2::{
-    Delimiter, Group as GenericGroup, Ident, Literal, Punct, Spacing, Span,
+    Delimiter, Group as GenericGroup, Ident, Literal, Punct, Spacing, Span as GenericSpan,
     TokenStream as GenericTokenStream, TokenTree as GenericTokenTree,
 };
 
 use crate::{Error, FragmentKind, MacroRuleNode};
+use std::ops::Deref;
 
 #[derive(Debug, Clone)]
 pub enum TokenTree {
@@ -93,6 +94,41 @@ pub struct Metavariable {
     pub span: Span,
 }
 
+#[derive(Copy, Clone)]
+pub struct Span {
+    inner: GenericSpan,
+}
+
+impl From<GenericSpan> for Span {
+    fn from(inner: GenericSpan) -> Self {
+        Span { inner }
+    }
+}
+
+impl Into<GenericSpan> for Span {
+    fn into(self) -> GenericSpan {
+        self.inner
+    }
+}
+
+impl Deref for Span {
+    type Target = GenericSpan;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl std::fmt::Debug for Span {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(text) = self.inner.source_text() {
+            write!(f, "span({text})")
+        } else {
+            std::fmt::Debug::fmt(&self.inner, f)
+        }
+    }
+}
+
 pub(crate) struct ParseCtxt {
     counter: usize,
     mode: ParseMode,
@@ -158,14 +194,20 @@ impl TokenTree {
                     match after_dollar {
                         // $ident
                         GenericTokenTree::Ident(ident) => {
-                            Self::parse_fragment(ctx, iter, punct.span(), ident)
+                            Self::parse_fragment(ctx, iter, punct.span().into(), ident)
                         }
 
                         // $(...)
                         GenericTokenTree::Group(group)
                             if group.delimiter() == Delimiter::Parenthesis =>
                         {
-                            Self::parse_repetition(ctx, punct.span(), group.span(), iter, group)
+                            Self::parse_repetition(
+                                ctx,
+                                punct.span().into(),
+                                group.span().into(),
+                                iter,
+                                group,
+                            )
                         }
 
                         anything => {
@@ -261,7 +303,7 @@ impl TokenTree {
                     todo!("Redefinition of metavariable")
                 }
 
-                (kind, Some((colon_span, kind_span)), span)
+                (kind, Some((colon_span.into(), kind_span.into())), span)
             }
 
             // $ident (kind obtained from the symbol table).
@@ -284,7 +326,7 @@ impl TokenTree {
             name,
             kind,
             matcher_spans,
-            span,
+            span: span.into(),
         }))
     }
 
@@ -362,8 +404,8 @@ impl TokenTree {
             content,
             separator,
             count,
-            count_span,
-            span,
+            count_span: count_span.into(),
+            span: span.into(),
         }))
     }
 
@@ -372,7 +414,7 @@ impl TokenTree {
 
         let content = Self::parse_seq(ctx, &mut iter)?;
         let delimiter = group.delimiter();
-        let span = group.span();
+        let span = group.span().into();
 
         Ok(Group {
             content,
@@ -422,7 +464,7 @@ impl TokenTree {
 
             TokenTree::Metavariable(metavariable) if mode == ParseMode::Matcher => {
                 let mut dollar = Punct::new('$', Spacing::Alone);
-                dollar.set_span(metavariable.dollar);
+                dollar.set_span(metavariable.dollar.into());
                 let dollar = GenericTokenTree::Punct(dollar);
 
                 let name = GenericTokenTree::Ident(metavariable.name);
@@ -432,10 +474,10 @@ impl TokenTree {
                     .expect("Attempt to convert a transcriber stream into a matcher stream");
 
                 let mut colon = Punct::new(':', Spacing::Alone);
-                colon.set_span(colon_span);
+                colon.set_span(colon_span.into());
                 let colon = GenericTokenTree::Punct(colon);
 
-                let kind = Ident::new(metavariable.kind.to_str(), kind_span);
+                let kind = Ident::new(metavariable.kind.to_str(), kind_span.into());
                 let kind = GenericTokenTree::Ident(kind);
 
                 tokens.extend([dollar, name, colon, kind]);
@@ -443,7 +485,7 @@ impl TokenTree {
 
             TokenTree::Metavariable(metavariable) => {
                 let mut dollar = Punct::new('$', Spacing::Alone);
-                dollar.set_span(metavariable.dollar);
+                dollar.set_span(metavariable.dollar.into());
                 let dollar = GenericTokenTree::Punct(dollar);
 
                 let name = GenericTokenTree::Ident(metavariable.name);
@@ -459,7 +501,7 @@ impl TokenTree {
             TokenTree::Repetition(repetition) => {
                 // $
                 let mut dollar = Punct::new('$', Spacing::Alone);
-                dollar.set_span(repetition.dollar);
+                dollar.set_span(repetition.dollar.into());
                 let dollar = GenericTokenTree::Punct(dollar);
 
                 // (inner)
@@ -471,7 +513,7 @@ impl TokenTree {
                     },
                 );
                 let mut group = GenericGroup::new(Delimiter::Parenthesis, stream);
-                group.set_span(repetition.paren);
+                group.set_span(repetition.paren.into());
                 let group = GenericTokenTree::Group(group);
 
                 tokens.extend([dollar, group]);
@@ -490,7 +532,7 @@ impl TokenTree {
                 // count
                 let count = repetition.count.as_char();
                 let mut count = Punct::new(count, Spacing::Alone);
-                count.set_span(repetition.count_span);
+                count.set_span(repetition.count_span.into());
                 let count = GenericTokenTree::Punct(count);
 
                 tokens.extend(iter::once(count));

@@ -1,6 +1,5 @@
-use crate::token_tree::{RepetitionId, TokenTree};
+use crate::token_tree::{RepetitionId, Span, TokenTree};
 use crate::Error;
-use proc_macro2::Span;
 use std::collections::BTreeMap;
 
 #[derive(Debug)]
