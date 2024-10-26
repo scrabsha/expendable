@@ -1,3 +1,21 @@
+//! Create groups of repetitions that repeat the same number of times.
+//!
+//! When expanding a macro, if a metavariable is repeated `n` times, *all* repetitions containing
+//! it will repeat exactly `n` times.
+//!
+//! This is transitive: if you have two metavariables `$a` and `$b`, `$a` repeats `n` times, and
+//! there is a repetition referencing both `$a` and `$b`, `$b` will also repeat `n` times.
+//!
+//! Knowing this information allows to greatly constrain the amount of expansions `expandable` has
+//! to check. For the transcriber `$($a $b)* $($a)* $($b)*`, this module shows that if the first
+//! repetition is repeated `n` times all other repetitions will only repeat exactly `n` times.
+//!
+//! Note that the grouping can only happen at the same repetition depth: a metavariable defined at
+//! depth 1 cannot be grouped with a metavariable defined at depth 2, even if they are both used
+//! inside of the same repetition. This is because a metavariable affect how many times the
+//! repetition at the metavariable *definition* depth is repeated, not how many times the
+//! repetition at the metavariable *usage* depth is repeated.
+
 use crate::token_tree::{RepetitionId, Span, TokenTree};
 use crate::Error;
 use std::collections::BTreeMap;
@@ -15,11 +33,14 @@ impl RepetitionGroups {
         let mut grouper = Grouper {
             next_group_id: 0,
             repetitions_stack: Vec::new(),
-            definitions: definitions(matcher),
+            metavar_definitions: metavar_definitions(matcher),
             by_repetition: BTreeMap::new(),
-            by_metavariable: BTreeMap::new(),
+            by_metavar: BTreeMap::new(),
         };
 
+        // We need to ingest repetitions and metavariables from the matcher and the transcriber,
+        // but there is no practical difference in which of the two the repetition is defined in.
+        // We can just concatenate them together.
         for token in matcher.iter().chain(transcriber.iter()) {
             grouper.ingest(token)?;
         }
@@ -49,11 +70,12 @@ impl std::fmt::Debug for GroupId {
 
 struct Grouper {
     next_group_id: usize,
+
     repetitions_stack: Vec<RepetitionId>,
-    definitions: BTreeMap<String, Definition>,
+    metavar_definitions: BTreeMap<String, MetavarDefinition>,
 
     by_repetition: BTreeMap<RepetitionId, GroupId>,
-    by_metavariable: BTreeMap<String, GroupId>,
+    by_metavar: BTreeMap<String, GroupId>,
 }
 
 impl Grouper {
@@ -67,6 +89,7 @@ impl Grouper {
                     self.ingest(token)?;
                 }
             }
+
             TokenTree::Repetition(repetition) => {
                 self.repetitions_stack.push(repetition.id);
                 for token in &repetition.content {
@@ -74,20 +97,23 @@ impl Grouper {
                 }
                 self.repetitions_stack.pop();
 
+                // Check whether there were no metavariables attached to this repetition.
                 if self.by_repetition.get(&repetition.id).is_none() {
                     return Err(Error::RepetitionWithoutMetavariables {
                         span: repetition.span,
                     });
                 }
             }
+
             TokenTree::Metavariable(meta) => {
                 let name = meta.name.to_string();
                 let definition = self
-                    .definitions
+                    .metavar_definitions
                     .get(&name)
-                    .expect("metavariable in the trascriber is not defined in the matcher");
+                    .expect("metavariable in the transcriber is not defined in the matcher");
 
                 let repetition = if definition.depth == 0 {
+                    // Not defined inside of a repetition.
                     None
                 } else if definition.depth > self.repetitions_stack.len() {
                     return Err(Error::MetavariableDefinedAtLowerDepth {
@@ -98,20 +124,50 @@ impl Grouper {
                         usage_depth: self.repetitions_stack.len(),
                     });
                 } else {
+                    // We consider the repetition at the depth the metavariable is defined in, not
+                    // the depth of the repetition we're currently processing.
+                    //
+                    // When a repetition refers to a metavariable defined at a higher depth, that
+                    // metavariable doesn't influence how many times the current repetition is
+                    // repeated. We should thus not group the metavariable with the repetition.
+                    //
+                    // Still, we can't just ignore the metavariable if it's not defined at the same
+                    // depth, because that metavariable influences how much the repetition *at its
+                    // definition depth* is repeated. We should then group the metavariable with
+                    // the repetition at its definition depth.
+                    //
+                    // Let's take this code for example:
+                    //
+                    // ```rust
+                    // macro_rules! example {
+                    //     ($($first:ident $($second:ident),*),*) => {
+                    //         $($($first, $second),*),*
+                    //     }
+                    // }
+                    // ```
+                    //
+                    // In the example, $first should be grouped with the outer repetition (as it
+                    // affects how much times it's repeated), while $second should be grouped with
+                    // the inner repetition (for the same reason), and there is no correlation for
+                    // how many times $first and $second repeat.
                     Some(self.repetitions_stack[definition.depth - 1])
                 };
 
-                let existing_meta_group = self.by_metavariable.get(&name).copied();
-                let existing_repetition_group =
-                    repetition.and_then(|r| self.by_repetition.get(&r)).copied();
+                // This can be `None` if either we are inside of a repetition and there is no group
+                // assigned to it *yet*, or if we are outside of a repetition.
+                let existing_repetition_group = match &repetition {
+                    Some(id) => self.by_repetition.get(id).copied(),
+                    None => None,
+                };
+                let existing_metavar_group = self.by_metavar.get(&name).copied();
 
-                let group = match (existing_meta_group, existing_repetition_group) {
+                let group = match (existing_metavar_group, existing_repetition_group) {
                     (Some(group), None) | (None, Some(group)) => group,
                     (Some(lhs), Some(rhs)) => self.merge_groups(lhs, rhs),
                     (None, None) => self.new_group(),
                 };
 
-                self.by_metavariable.insert(name, group);
+                self.by_metavar.insert(name, group);
                 if let Some(repetition) = repetition {
                     self.by_repetition.insert(repetition, group);
                 }
@@ -123,14 +179,15 @@ impl Grouper {
     fn merge_groups(&mut self, lhs: GroupId, rhs: GroupId) -> GroupId {
         // To merge two groups, we are going to keep one of them (we arbitrarily choose lhs) and we
         // replace all occurences of the other group with the one we chose.
-
-        for value in self
-            .by_repetition
-            .values_mut()
-            .chain(self.by_metavariable.values_mut())
-        {
-            if *value == rhs {
-                *value = lhs;
+        if lhs != rhs {
+            for value in self
+                .by_repetition
+                .values_mut()
+                .chain(self.by_metavar.values_mut())
+            {
+                if *value == rhs {
+                    *value = lhs;
+                }
             }
         }
         lhs
@@ -143,8 +200,9 @@ impl Grouper {
     }
 }
 
-fn definitions(matcher: &[TokenTree]) -> BTreeMap<String, Definition> {
-    fn recurse(result: &mut BTreeMap<String, Definition>, depth: usize, token: &TokenTree) {
+/// Gather the definitions of all metavariables, so that they can be referenced during grouping.
+fn metavar_definitions(matcher: &[TokenTree]) -> BTreeMap<String, MetavarDefinition> {
+    fn recurse(result: &mut BTreeMap<String, MetavarDefinition>, depth: usize, token: &TokenTree) {
         match token {
             TokenTree::Ident(_) => {}
             TokenTree::Punct(_) => {}
@@ -167,7 +225,7 @@ fn definitions(matcher: &[TokenTree]) -> BTreeMap<String, Definition> {
 
                 result.insert(
                     name,
-                    Definition {
+                    MetavarDefinition {
                         span: meta.span,
                         depth,
                     },
@@ -190,7 +248,7 @@ fn definitions(matcher: &[TokenTree]) -> BTreeMap<String, Definition> {
 }
 
 #[derive(Debug)]
-struct Definition {
+struct MetavarDefinition {
     span: Span,
     depth: usize,
 }
@@ -204,20 +262,12 @@ mod tests {
 
     #[test]
     fn test_no_metavariables() {
-        do_test_groups(
-            "foo",
-            "bar",
-            expect!["<nothing>"],
-        );
+        do_test_groups("foo", "bar", expect!["<nothing>"]);
     }
 
     #[test]
     fn test_metavariable_outside_repetition() {
-        do_test_groups(
-            "$foo:ident",
-            "$foo",
-            expect!["<nothing>"],
-        );
+        do_test_groups("$foo:ident", "$foo", expect!["<nothing>"]);
     }
 
     #[test]
@@ -425,7 +475,7 @@ mod tests {
     fn do_test_definitions(input: &str, expect: Expect) {
         let mut ctx = ParseCtxt::matcher();
         let tokens = TokenTree::from_generic(&mut ctx, input.parse().unwrap()).unwrap();
-        expect.assert_debug_eq(&definitions(&tokens));
+        expect.assert_debug_eq(&metavar_definitions(&tokens));
     }
 
     fn find_repetition_spans(spans: &mut HashMap<RepetitionId, Span>, token: &TokenTree) {
