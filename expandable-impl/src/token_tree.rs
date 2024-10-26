@@ -187,7 +187,7 @@ impl TokenTree {
                 GenericTokenTree::Punct(punct) if punct.as_char() == '$' => {
                     let Some(after_dollar) = iter.next() else {
                         return Err(Error::UnexpectedEnd {
-                            last_token: Some(punct.span()),
+                            last_token: Some(punct.span().into()),
                         });
                     };
 
@@ -216,7 +216,7 @@ impl TokenTree {
                                     MacroRuleNode::Repetition,
                                     MacroRuleNode::MetaVariableMatch,
                                 ],
-                                where_: anything.span(),
+                                where_: anything.span().into(),
                             });
                         }
                     }?
@@ -253,20 +253,20 @@ impl TokenTree {
                 // :
                 let Some(token) = iter.next() else {
                     return Err(Error::UnexpectedEnd {
-                        last_token: Some(span),
+                        last_token: Some(span.into()),
                     });
                 };
                 let GenericTokenTree::Punct(token) = token else {
                     return Err(Error::ParsingFailed {
                         what: vec![MacroRuleNode::FragmentName],
-                        where_: token.span(),
+                        where_: token.span().into(),
                     });
                 };
 
                 if token.as_char() != ':' {
                     return Err(Error::ParsingFailed {
                         what: vec![MacroRuleNode::FragmentName],
-                        where_: token.span(),
+                        where_: token.span().into(),
                     });
                 }
                 // TODO: we want to be able to expand the span somehow.
@@ -276,7 +276,7 @@ impl TokenTree {
 
                 let Some(token) = iter.next() else {
                     return Err(Error::UnexpectedEnd {
-                        last_token: Some(colon_span),
+                        last_token: Some(colon_span.into()),
                     });
                 };
 
@@ -284,14 +284,14 @@ impl TokenTree {
                 let GenericTokenTree::Ident(ident) = token else {
                     return Err(Error::ParsingFailed {
                         what: vec![MacroRuleNode::FragmentSpecifier],
-                        where_: token.span(),
+                        where_: token.span().into(),
                     });
                 };
 
                 let Ok(kind) = ident.to_string().parse() else {
                     return Err(Error::ParsingFailed {
                         what: vec![MacroRuleNode::FragmentSpecifier],
-                        where_: span,
+                        where_: span.into(),
                     });
                 };
 
@@ -314,7 +314,7 @@ impl TokenTree {
                         .get(&name)
                         .ok_or_else(|| Error::UnboundMetavariable {
                             name: name.to_string(),
-                            where_: span,
+                            where_: span.into(),
                         })?;
 
                 (kind, None, span)
@@ -343,10 +343,10 @@ impl TokenTree {
 
         let content = TokenTree::parse_group(ctx, group)?.content;
 
-        let mut try_parse_quantifier = || {
+        let mut try_parse_quantifier = || -> Result<_, Error> {
             let Some(token) = iter.next() else {
                 return Err(Error::UnexpectedEnd {
-                    last_token: Some(span),
+                    last_token: Some(span.into()),
                 });
             };
 
@@ -374,7 +374,7 @@ impl TokenTree {
                         MacroRuleNode::RepetitionSeparator,
                         MacroRuleNode::RepetitionQuantifier,
                     ],
-                    where_: token.span(),
+                    where_: token.span().into(),
                 }),
             }
         };
