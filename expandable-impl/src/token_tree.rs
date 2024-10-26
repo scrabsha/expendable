@@ -54,8 +54,14 @@ impl Separator {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RepetitionId(usize);
+
+impl std::fmt::Debug for RepetitionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "repetition {}", self.0)
+    }
+}
 
 #[derive(Debug)]
 pub enum RepetitionCount {
@@ -504,9 +510,7 @@ mod tests {
                     [
                         Repetition(
                             Repetition {
-                                id: RepetitionId(
-                                    0,
-                                ),
+                                id: repetition 0,
                                 content: [
                                     Metavariable(
                                         Metavariable {
@@ -527,9 +531,7 @@ mod tests {
                     [
                         Repetition(
                             Repetition {
-                                id: RepetitionId(
-                                    1,
-                                ),
+                                id: repetition 1,
                                 content: [
                                     Metavariable(
                                         Metavariable {
@@ -560,9 +562,7 @@ mod tests {
                     [
                         Repetition(
                             Repetition {
-                                id: RepetitionId(
-                                    0,
-                                ),
+                                id: repetition 0,
                                 content: [
                                     Metavariable(
                                         Metavariable {
@@ -575,9 +575,7 @@ mod tests {
                                     ),
                                     Repetition(
                                         Repetition {
-                                            id: RepetitionId(
-                                                1,
-                                            ),
+                                            id: repetition 1,
                                             content: [
                                                 Metavariable(
                                                     Metavariable {
@@ -604,15 +602,11 @@ mod tests {
                     [
                         Repetition(
                             Repetition {
-                                id: RepetitionId(
-                                    2,
-                                ),
+                                id: repetition 2,
                                 content: [
                                     Repetition(
                                         Repetition {
-                                            id: RepetitionId(
-                                                3,
-                                            ),
+                                            id: repetition 3,
                                             content: [
                                                 Metavariable(
                                                     Metavariable {
