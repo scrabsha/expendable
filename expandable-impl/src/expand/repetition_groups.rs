@@ -363,27 +363,52 @@ mod tests {
     #[test]
     fn test_using_metavariable_of_lower_depth_than_repetition() {
         do_test_groups("$($foo:ident)*", "$foo", expect![[r#"
-                Err(
-                    MetavariableDefinedAtLowerDepth {
-                        name: "foo",
-                        definition_span: span( $foo:ident ),
-                        usage_span: span( $foo ),
-                        definition_depth: 1,
-                        usage_depth: 0,
-                    },
-                )
-            "#]]);
+            Err(
+                MetavariableDefinedAtLowerDepth {
+                    name: "foo",
+                    definition_span: span( $foo:ident ),
+                    usage_span: span( $foo ),
+                    definition_depth: 1,
+                    usage_depth: 0,
+                },
+            )
+        "#]]);
+    }
+
+    #[test]
+    fn test_repetition_with_metavariable_inside_repetition_without_one() {
+        // TODO: this should work
+        do_test_groups("$($($a:ident)*)*", "$($($a)*)* $($($a)*)*", expect! {[r#"
+            Err(
+                RepetitionWithoutMetavariables {
+                    span: span( $($($a:ident)*)* ),
+                },
+            )
+        "#]});
+    }
+
+    #[test]
+    fn test_repetition_with_metavariable_inside_repetition_without_one_inside_repetition_without_metavariables()
+     {
+        // TODO: find a better name for this test lmao
+        do_test_groups("$($($a:ident)*)*", "$($($($a)*)*)*", expect! {[r#"
+            Err(
+                RepetitionWithoutMetavariables {
+                    span: span( $($($a:ident)*)* ),
+                },
+            )
+        "#]});
     }
 
     #[test]
     fn test_repetition_without_metavariables() {
         do_test_groups("", "$(1,)*", expect![[r#"
-                Err(
-                    RepetitionWithoutMetavariables {
-                        span: span( $(1,)* ),
-                    },
-                )
-            "#]]);
+            Err(
+                RepetitionWithoutMetavariables {
+                    span: span( $(1,)* ),
+                },
+            )
+        "#]]);
     }
 
     #[test]
