@@ -1,9 +1,9 @@
 #![allow(missing_docs)] // TODO: write docs
 
-use std::collections::HashMap;
+use std::{collections::HashMap, iter};
 
 use proc_macro2::{
-    Delimiter, Group as GenericGroup, Ident, Literal, Punct, Span,
+    Delimiter, Group as GenericGroup, Ident, Literal, Punct, Spacing, Span,
     TokenStream as GenericTokenStream, TokenTree as GenericTokenTree,
 };
 
@@ -29,9 +29,12 @@ pub struct Group {
 #[derive(Debug)]
 pub struct Repetition {
     pub id: RepetitionId,
+    pub dollar: Span,
+    pub paren: Span,
     pub content: Vec<TokenTree>,
     pub separator: Separator,
     pub count: RepetitionCount,
+    pub count_span: Span,
     pub span: Span,
 }
 
@@ -63,17 +66,30 @@ impl std::fmt::Debug for RepetitionId {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum RepetitionCount {
     AtMostOne,
     ZeroOrMore,
     OneOrMore,
 }
 
+impl RepetitionCount {
+    fn as_char(self) -> char {
+        match self {
+            RepetitionCount::AtMostOne => '?',
+            RepetitionCount::ZeroOrMore => '*',
+            RepetitionCount::OneOrMore => '+',
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Metavariable {
+    pub dollar: Span,
     pub name: Ident,
     pub kind: FragmentKind,
+    // None when parsing a transcriber :3
+    pub matcher_spans: Option<(/* : */ Span, /* kind */ Span)>,
     pub span: Span,
 }
 
@@ -113,6 +129,7 @@ impl ParseCtxt {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
 enum ParseMode {
     Matcher,
     Transcriber,
@@ -145,13 +162,15 @@ impl TokenTree {
 
                     match after_dollar {
                         // $ident
-                        GenericTokenTree::Ident(ident) => Self::parse_fragment(ctx, iter, ident),
+                        GenericTokenTree::Ident(ident) => {
+                            Self::parse_fragment(ctx, iter, punct.span(), ident)
+                        }
 
                         // $(...)
                         GenericTokenTree::Group(group)
                             if group.delimiter() == Delimiter::Parenthesis =>
                         {
-                            Self::parse_repetition(ctx, iter, group)
+                            Self::parse_repetition(ctx, punct.span(), group.span(), iter, group)
                         }
 
                         anything => {
@@ -184,13 +203,14 @@ impl TokenTree {
     fn parse_fragment(
         ctx: &mut ParseCtxt,
         iter: &mut impl Iterator<Item = GenericTokenTree>,
+        dollar: Span,
         name: Ident,
         // TODO
     ) -> Result<TokenTree, Error> {
         let span = name.span();
         // $ident
 
-        let (kind, span) = match ctx.mode {
+        let (kind, matcher_spans, span) = match ctx.mode {
             // $ident:kind
             ParseMode::Matcher => {
                 // :
@@ -213,13 +233,13 @@ impl TokenTree {
                     });
                 }
                 // TODO: we want to be able to expand the span somehow.
-                let span = token.span();
+                let colon_span = token.span();
 
                 // $ident:
 
                 let Some(token) = iter.next() else {
                     return Err(Error::UnexpectedEnd {
-                        last_token: Some(span),
+                        last_token: Some(colon_span),
                     });
                 };
 
@@ -238,13 +258,15 @@ impl TokenTree {
                     });
                 };
 
+                let kind_span = ident.span();
+
                 let prev = ctx.metavariables.insert(name.clone(), kind);
 
                 if prev.is_some() {
                     todo!("Redefinition of metavariable")
                 }
 
-                (kind, span)
+                (kind, Some((colon_span, kind_span)), span)
             }
 
             // $ident (kind obtained from the symbol table).
@@ -258,15 +280,23 @@ impl TokenTree {
                             where_: span,
                         })?;
 
-                (kind, span)
+                (kind, None, span)
             }
         };
 
-        Ok(TokenTree::Metavariable(Metavariable { name, kind, span }))
+        Ok(TokenTree::Metavariable(Metavariable {
+            dollar,
+            name,
+            kind,
+            matcher_spans,
+            span,
+        }))
     }
 
     fn parse_repetition(
         ctx: &mut ParseCtxt,
+        dollar: Span,
+        paren: Span,
         iter: &mut impl Iterator<Item = GenericTokenTree>,
         group: GenericGroup,
     ) -> Result<TokenTree, Error> {
@@ -312,12 +342,12 @@ impl TokenTree {
             }
         };
 
-        let (separator, count) = {
+        let (separator, count, count_span) = {
             match try_parse_quantifier()? {
-                Ok((count, _)) => (Separator::None, count),
+                Ok((count, count_span)) => (Separator::None, count, count_span),
 
                 Err(separator) => match try_parse_quantifier()? {
-                    Ok((count, _)) => (separator, count),
+                    Ok((count, count_span)) => (separator, count, count_span),
 
                     Err(separator) => {
                         let tree = match separator.to_token_tree() {
@@ -332,9 +362,12 @@ impl TokenTree {
 
         Ok(TokenTree::Repetition(Repetition {
             id,
+            dollar,
+            paren,
             content,
             separator,
             count,
+            count_span,
             span,
         }))
     }
@@ -351,6 +384,122 @@ impl TokenTree {
             delimiter,
             span,
         })
+    }
+
+    fn into_generic(stream: Vec<TokenTree>, mode: ParseMode) -> GenericTokenStream {
+        stream
+            .into_iter()
+            .fold(GenericTokenStream::new(), |mut stream, tree| {
+                tree.into_generic_tree(mode, &mut stream);
+                stream
+            })
+    }
+
+    fn into_generic_tree(self, mode: ParseMode, tokens: &mut GenericTokenStream) {
+        match self {
+            TokenTree::Ident(ident) => {
+                tokens.extend(iter::once(GenericTokenTree::Ident(ident)));
+            }
+
+            TokenTree::Punct(punct) => {
+                tokens.extend(iter::once(GenericTokenTree::Punct(punct)));
+            }
+
+            TokenTree::Literal(literal) => {
+                tokens.extend(iter::once(GenericTokenTree::Literal(literal)));
+            }
+
+            TokenTree::Group(group) => {
+                let stream = group.content.into_iter().fold(
+                    GenericTokenStream::new(),
+                    |mut stream, element| {
+                        element.into_generic_tree(mode, &mut stream);
+                        stream
+                    },
+                );
+
+                let group = GenericGroup::new(group.delimiter, stream);
+                let tree = GenericTokenTree::Group(group);
+
+                tokens.extend(iter::once(tree));
+            }
+
+            TokenTree::Metavariable(metavariable) if mode == ParseMode::Matcher => {
+                let mut dollar = Punct::new('$', Spacing::Alone);
+                dollar.set_span(metavariable.dollar);
+                let dollar = GenericTokenTree::Punct(dollar);
+
+                let name = GenericTokenTree::Ident(metavariable.name);
+
+                let (colon_span, kind_span) = metavariable
+                    .matcher_spans
+                    .expect("Attempt to convert a transcriber stream into a matcher stream");
+
+                let mut colon = Punct::new(':', Spacing::Alone);
+                colon.set_span(colon_span);
+                let colon = GenericTokenTree::Punct(colon);
+
+                let kind = Ident::new(metavariable.kind.to_str(), kind_span);
+                let kind = GenericTokenTree::Ident(kind);
+
+                tokens.extend([dollar, name, colon, kind]);
+            }
+
+            TokenTree::Metavariable(metavariable) => {
+                let mut dollar = Punct::new('$', Spacing::Alone);
+                dollar.set_span(metavariable.dollar);
+                let dollar = GenericTokenTree::Punct(dollar);
+
+                let name = GenericTokenTree::Ident(metavariable.name);
+
+                assert!(
+                    metavariable.matcher_spans.is_none(),
+                    "Attempt to convert a matcher stream into a transcriber stream"
+                );
+
+                tokens.extend([dollar, name]);
+            }
+
+            TokenTree::Repetition(repetition) => {
+                // $
+                let mut dollar = Punct::new('$', Spacing::Alone);
+                dollar.set_span(repetition.dollar);
+                let dollar = GenericTokenTree::Punct(dollar);
+
+                // (inner)
+                let stream = repetition.content.into_iter().fold(
+                    GenericTokenStream::new(),
+                    |mut stream, tree| {
+                        tree.into_generic_tree(mode, &mut stream);
+                        stream
+                    },
+                );
+                let mut group = GenericGroup::new(Delimiter::Parenthesis, stream);
+                group.set_span(repetition.paren);
+                let group = GenericTokenTree::Group(group);
+
+                tokens.extend([dollar, group]);
+
+                // sep
+                if let Some(mut tree) = repetition.separator.to_token_tree() {
+                    if let GenericTokenTree::Punct(ref mut punct) = tree {
+                        // Set appropriate spacing here - we know the next token
+                        // going to be a punct as well!
+                        let ch = punct.as_char();
+                        *punct = Punct::new(ch, Spacing::Joint);
+                    }
+                    tokens.extend(iter::once(tree));
+                }
+
+                // count
+                let count = repetition.count.as_char();
+                let mut count = Punct::new(count, Spacing::Alone);
+                count.set_span(repetition.count_span);
+                let count = GenericTokenTree::Punct(count);
+
+                tokens.extend(iter::once(count));
+            }
+        }
     }
 }
 
@@ -511,19 +660,29 @@ mod tests {
                         Repetition(
                             Repetition {
                                 id: repetition 0,
+                                dollar: bytes(1..2),
+                                paren: bytes(0..0),
                                 content: [
                                     Metavariable(
                                         Metavariable {
+                                            dollar: bytes(3..4),
                                             name: Ident {
                                                 sym: a,
                                             },
                                             kind: Ident,
+                                            matcher_spans: Some(
+                                                (
+                                                    bytes(0..0),
+                                                    bytes(0..0),
+                                                ),
+                                            ),
                                             span: bytes(0..0),
                                         },
                                     ),
                                 ],
                                 separator: None,
                                 count: ZeroOrMore,
+                                count_span: bytes(0..0),
                                 span: bytes(0..0),
                             },
                         ),
@@ -532,19 +691,24 @@ mod tests {
                         Repetition(
                             Repetition {
                                 id: repetition 1,
+                                dollar: bytes(5..6),
+                                paren: bytes(0..0),
                                 content: [
                                     Metavariable(
                                         Metavariable {
+                                            dollar: bytes(7..8),
                                             name: Ident {
                                                 sym: a,
                                             },
                                             kind: Ident,
+                                            matcher_spans: None,
                                             span: bytes(0..0),
                                         },
                                     ),
                                 ],
                                 separator: None,
                                 count: ZeroOrMore,
+                                count_span: bytes(0..0),
                                 span: bytes(0..0),
                             },
                         ),
@@ -563,38 +727,58 @@ mod tests {
                         Repetition(
                             Repetition {
                                 id: repetition 0,
+                                dollar: bytes(1..2),
+                                paren: bytes(0..0),
                                 content: [
                                     Metavariable(
                                         Metavariable {
+                                            dollar: bytes(3..4),
                                             name: Ident {
                                                 sym: foo,
                                             },
                                             kind: Ident,
+                                            matcher_spans: Some(
+                                                (
+                                                    bytes(0..0),
+                                                    bytes(0..0),
+                                                ),
+                                            ),
                                             span: bytes(0..0),
                                         },
                                     ),
                                     Repetition(
                                         Repetition {
                                             id: repetition 1,
+                                            dollar: bytes(5..6),
+                                            paren: bytes(0..0),
                                             content: [
                                                 Metavariable(
                                                     Metavariable {
+                                                        dollar: bytes(7..8),
                                                         name: Ident {
                                                             sym: bar,
                                                         },
                                                         kind: Ident,
+                                                        matcher_spans: Some(
+                                                            (
+                                                                bytes(0..0),
+                                                                bytes(0..0),
+                                                            ),
+                                                        ),
                                                         span: bytes(0..0),
                                                     },
                                                 ),
                                             ],
                                             separator: None,
                                             count: ZeroOrMore,
+                                            count_span: bytes(0..0),
                                             span: bytes(0..0),
                                         },
                                     ),
                                 ],
                                 separator: None,
                                 count: ZeroOrMore,
+                                count_span: bytes(0..0),
                                 span: bytes(0..0),
                             },
                         ),
@@ -603,38 +787,48 @@ mod tests {
                         Repetition(
                             Repetition {
                                 id: repetition 2,
+                                dollar: bytes(9..10),
+                                paren: bytes(0..0),
                                 content: [
                                     Repetition(
                                         Repetition {
                                             id: repetition 3,
+                                            dollar: bytes(11..12),
+                                            paren: bytes(0..0),
                                             content: [
                                                 Metavariable(
                                                     Metavariable {
+                                                        dollar: bytes(13..14),
                                                         name: Ident {
                                                             sym: foo,
                                                         },
                                                         kind: Ident,
+                                                        matcher_spans: None,
                                                         span: bytes(0..0),
                                                     },
                                                 ),
                                                 Metavariable(
                                                     Metavariable {
+                                                        dollar: bytes(15..16),
                                                         name: Ident {
                                                             sym: bar,
                                                         },
                                                         kind: Ident,
+                                                        matcher_spans: None,
                                                         span: bytes(0..0),
                                                     },
                                                 ),
                                             ],
                                             separator: None,
                                             count: ZeroOrMore,
+                                            count_span: bytes(0..0),
                                             span: bytes(0..0),
                                         },
                                     ),
                                 ],
                                 separator: None,
                                 count: ZeroOrMore,
+                                count_span: bytes(0..0),
                                 span: bytes(0..0),
                             },
                         ),

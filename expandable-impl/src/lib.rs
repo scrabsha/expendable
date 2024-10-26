@@ -561,6 +561,26 @@ impl FromStr for FragmentKind {
     }
 }
 
+impl FragmentKind {
+    fn to_str(&self) -> &'static str {
+        match self {
+            FragmentKind::Block => "block",
+            FragmentKind::Expr => "expr",
+            FragmentKind::Ident => "ident",
+            FragmentKind::Item => "item",
+            FragmentKind::Lifetime => "lifetime",
+            FragmentKind::Meta => "meta",
+            FragmentKind::Pat => "pat",
+            FragmentKind::Path => "path",
+            FragmentKind::PatParam => "pat_param",
+            FragmentKind::Stmt => "stmt",
+            FragmentKind::Tt => "tt",
+            FragmentKind::Ty => "ty",
+            FragmentKind::Vis => "vis",
+        }
+    }
+}
+
 impl FromStr for InvocationContext {
     type Err = ();
 
