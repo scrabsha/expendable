@@ -98,6 +98,16 @@ pub struct Span {
     inner: GenericSpan,
 }
 
+impl Span {
+    pub fn join(&self, other: impl Into<Span>) -> Span {
+        // This is best-effort, because in a proc macro context on stable compilers the join method
+        // is not available (as it is unstable).
+        Span {
+            inner: self.inner.join(other.into().inner).unwrap_or(self.inner),
+        }
+    }
+}
+
 impl From<GenericSpan> for Span {
     fn from(inner: GenericSpan) -> Self {
         Span { inner }
@@ -235,10 +245,10 @@ impl TokenTree {
         name: Ident,
         // TODO
     ) -> Result<TokenTree, Error> {
-        let span = name.span();
+        let mut span = dollar.join(name.span());
         // $ident
 
-        let (kind, matcher_spans, span) = match ctx.mode {
+        let (kind, matcher_spans) = match ctx.mode {
             // $ident:kind
             ParseMode::Matcher => {
                 // :
@@ -260,8 +270,9 @@ impl TokenTree {
                         where_: token.span().into(),
                     });
                 }
-                // TODO: we want to be able to expand the span somehow.
+
                 let colon_span = token.span();
+                span = span.join(colon_span);
 
                 // $ident:
 
@@ -271,7 +282,8 @@ impl TokenTree {
                     });
                 };
 
-                let span = token.span();
+                span = span.join(token.span());
+
                 let GenericTokenTree::Ident(ident) = token else {
                     return Err(Error::ParsingFailed {
                         what: vec![MacroRuleNode::FragmentSpecifier],
@@ -294,12 +306,11 @@ impl TokenTree {
                     todo!("Redefinition of metavariable")
                 }
 
-                (kind, Some((colon_span.into(), kind_span.into())), span)
+                (kind, Some((colon_span.into(), kind_span.into())))
             }
 
             // $ident (kind obtained from the symbol table).
             ParseMode::Transcriber => {
-                let span = name.span();
                 let kind =
                     *ctx.metavariables
                         .get(&name)
@@ -308,7 +319,7 @@ impl TokenTree {
                             where_: span.into(),
                         })?;
 
-                (kind, None, span)
+                (kind, None)
             }
         };
 
@@ -317,7 +328,7 @@ impl TokenTree {
             name,
             kind,
             matcher_spans,
-            span: span.into(),
+            span,
         }))
     }
 
@@ -766,7 +777,7 @@ mod tests {
                                                     bytes(0..0),
                                                 ),
                                             ),
-                                            span: bytes(0..0),
+                                            span: span($),
                                         },
                                     ),
                                 ],
@@ -792,7 +803,7 @@ mod tests {
                                             },
                                             kind: Ident,
                                             matcher_spans: None,
-                                            span: bytes(0..0),
+                                            span: span($),
                                         },
                                     ),
                                 ],
@@ -888,7 +899,7 @@ mod tests {
                                                     bytes(0..0),
                                                 ),
                                             ),
-                                            span: bytes(0..0),
+                                            span: span($),
                                         },
                                     ),
                                     Repetition(
@@ -910,7 +921,7 @@ mod tests {
                                                                 bytes(0..0),
                                                             ),
                                                         ),
-                                                        span: bytes(0..0),
+                                                        span: span($),
                                                     },
                                                 ),
                                             ],
@@ -949,7 +960,7 @@ mod tests {
                                                         },
                                                         kind: Ident,
                                                         matcher_spans: None,
-                                                        span: bytes(0..0),
+                                                        span: span($),
                                                     },
                                                 ),
                                                 Metavariable(
@@ -960,7 +971,7 @@ mod tests {
                                                         },
                                                         kind: Ident,
                                                         matcher_spans: None,
-                                                        span: bytes(0..0),
+                                                        span: span($),
                                                     },
                                                 ),
                                             ],

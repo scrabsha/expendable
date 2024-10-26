@@ -376,8 +376,8 @@ mod tests {
                 Err(
                     MetavariableDefinedAtLowerDepth {
                         name: "foo",
-                        definition_span: span(ident),
-                        usage_span: span(foo),
+                        definition_span: span($foo:ident),
+                        usage_span: span($foo),
                         definition_depth: 1,
                         usage_depth: 0,
                     },
@@ -408,19 +408,19 @@ mod tests {
             expect![[r#"
                 {
                     "bar": Definition {
-                        span: span(ident),
+                        span: span($bar:ident),
                         depth: 0,
                     },
                     "baz": Definition {
-                        span: span(ident),
+                        span: span($baz:ident),
                         depth: 1,
                     },
                     "foo": Definition {
-                        span: span(ident),
+                        span: span($foo:ident),
                         depth: 1,
                     },
                     "quux": Definition {
-                        span: span(ident),
+                        span: span($quux:ident),
                         depth: 2,
                     },
                 }
