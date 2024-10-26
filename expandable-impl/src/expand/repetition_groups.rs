@@ -200,19 +200,14 @@ mod tests {
     use super::*;
     use crate::token_tree::ParseCtxt;
     use expect_test::{expect, Expect};
+    use std::collections::HashMap;
 
     #[test]
     fn test_no_metavariables() {
         do_test_groups(
             "foo",
             "bar",
-            expect![[r#"
-                Ok(
-                    RepetitionGroups {
-                        by_repetition: {},
-                    },
-                )
-            "#]],
+            expect!["<nothing>"],
         );
     }
 
@@ -221,13 +216,7 @@ mod tests {
         do_test_groups(
             "$foo:ident",
             "$foo",
-            expect![[r#"
-                Ok(
-                    RepetitionGroups {
-                        by_repetition: {},
-                    },
-                )
-            "#]],
+            expect!["<nothing>"],
         );
     }
 
@@ -237,14 +226,8 @@ mod tests {
             "$($foo:ident),*",
             "$($foo),*",
             expect![[r#"
-                Ok(
-                    RepetitionGroups {
-                        by_repetition: {
-                            repetition 0: group 0,
-                            repetition 1: group 0,
-                        },
-                    },
-                )
+                span( ($foo:ident) ) => group 0
+                span( ($foo) )       => group 0
             "#]],
         );
     }
@@ -255,16 +238,10 @@ mod tests {
             "$($foo:ident)* $($bar:ident)*",
             "$($foo)* $($bar)*",
             expect![[r#"
-                Ok(
-                    RepetitionGroups {
-                        by_repetition: {
-                            repetition 0: group 0,
-                            repetition 1: group 1,
-                            repetition 2: group 0,
-                            repetition 3: group 1,
-                        },
-                    },
-                )
+                span( ($foo:ident) ) => group 0
+                span( ($bar:ident) ) => group 1
+                span( ($foo) )       => group 0
+                span( ($bar) )       => group 1
             "#]],
         );
     }
@@ -275,15 +252,9 @@ mod tests {
             "$($foo:ident)* $($bar:ident)*",
             "$($foo $bar)*",
             expect![[r#"
-                Ok(
-                    RepetitionGroups {
-                        by_repetition: {
-                            repetition 0: group 1,
-                            repetition 1: group 1,
-                            repetition 2: group 1,
-                        },
-                    },
-                )
+                span( ($foo:ident) ) => group 1
+                span( ($bar:ident) ) => group 1
+                span( ($foo $bar) )  => group 1
             "#]],
         );
     }
@@ -294,15 +265,9 @@ mod tests {
             "$($foo:ident $bar:ident)*",
             "$($foo)* $($bar)*",
             expect![[r#"
-                Ok(
-                    RepetitionGroups {
-                        by_repetition: {
-                            repetition 0: group 0,
-                            repetition 1: group 0,
-                            repetition 2: group 0,
-                        },
-                    },
-                )
+                span( ($foo:ident $bar:ident) ) => group 0
+                span( ($foo) )                  => group 0
+                span( ($bar) )                  => group 0
             "#]],
         );
     }
@@ -313,16 +278,10 @@ mod tests {
             "$($foo:ident $($bar:ident)*)*",
             "$($foo $($bar)*)*",
             expect![[r#"
-                Ok(
-                    RepetitionGroups {
-                        by_repetition: {
-                            repetition 0: group 0,
-                            repetition 1: group 1,
-                            repetition 2: group 0,
-                            repetition 3: group 1,
-                        },
-                    },
-                )
+                span( ($foo:ident $($bar:ident)*) ) => group 0
+                span( ($bar:ident) )                => group 1
+                span( ($foo $($bar)*) )             => group 0
+                span( ($bar) )                      => group 1
             "#]],
         );
     }
@@ -333,16 +292,10 @@ mod tests {
             "$($foo:ident $($bar:ident)*)* $baz:ident",
             "$($($foo $bar $baz)*)*",
             expect![[r#"
-                Ok(
-                    RepetitionGroups {
-                        by_repetition: {
-                            repetition 0: group 0,
-                            repetition 1: group 1,
-                            repetition 2: group 0,
-                            repetition 3: group 1,
-                        },
-                    },
-                )
+                span( ($foo:ident $($bar:ident)*) ) => group 0
+                span( ($bar:ident) )                => group 1
+                span( ($($foo $bar $baz)*) )        => group 0
+                span( ($foo $bar $baz) )            => group 1
             "#]],
         );
     }
@@ -353,16 +306,10 @@ mod tests {
             "$foo:ident $($bar:ident)* $($baz:ident)*",
             "$($foo $bar)* $($foo $baz)*",
             expect![[r#"
-                Ok(
-                    RepetitionGroups {
-                        by_repetition: {
-                            repetition 0: group 1,
-                            repetition 1: group 2,
-                            repetition 2: group 1,
-                            repetition 3: group 2,
-                        },
-                    },
-                )
+                span( ($bar:ident) ) => group 1
+                span( ($baz:ident) ) => group 2
+                span( ($foo $bar) )  => group 1
+                span( ($foo $baz) )  => group 2
             "#]],
         );
     }
@@ -434,12 +381,70 @@ mod tests {
         ctx.turn_into_transcriber();
         let transcriber = TokenTree::from_generic(&mut ctx, transcriber.parse().unwrap()).unwrap();
 
-        expect.assert_debug_eq(&RepetitionGroups::new(&matcher, &transcriber));
+        let mut repetition_spans = HashMap::new();
+        for token in matcher.iter().chain(transcriber.iter()) {
+            find_repetition_spans(&mut repetition_spans, token);
+        }
+
+        let groups = match RepetitionGroups::new(&matcher, &transcriber) {
+            Ok(groups) => groups,
+            err @ Err(_) => {
+                expect.assert_debug_eq(&err);
+                return;
+            }
+        };
+
+        let lines = groups
+            .by_repetition
+            .iter()
+            .map(|(repetition, group)| {
+                (
+                    format!("{:?}", repetition_spans.get(repetition).unwrap()),
+                    format!("{group:?}"),
+                )
+            })
+            .collect::<Vec<_>>();
+        let first_column_len = lines
+            .iter()
+            .map(|(repetition, _)| repetition.len())
+            .max()
+            .unwrap_or(0);
+
+        let mut assertable = String::new();
+        for (repetition, group) in lines {
+            assertable.push_str(&format!("{repetition:first_column_len$} => {group}\n"));
+        }
+
+        if assertable.is_empty() {
+            assertable = "<nothing>".into();
+        }
+
+        expect.assert_eq(&assertable);
     }
 
     fn do_test_definitions(input: &str, expect: Expect) {
         let mut ctx = ParseCtxt::matcher();
         let tokens = TokenTree::from_generic(&mut ctx, input.parse().unwrap()).unwrap();
         expect.assert_debug_eq(&definitions(&tokens));
+    }
+
+    fn find_repetition_spans(spans: &mut HashMap<RepetitionId, Span>, token: &TokenTree) {
+        match token {
+            TokenTree::Ident(_)
+            | TokenTree::Punct(_)
+            | TokenTree::Literal(_)
+            | TokenTree::Metavariable(_) => {}
+            TokenTree::Group(group) => {
+                for token in &group.content {
+                    find_repetition_spans(spans, token);
+                }
+            }
+            TokenTree::Repetition(repetition) => {
+                spans.insert(repetition.id, repetition.span);
+                for token in &repetition.content {
+                    find_repetition_spans(spans, token);
+                }
+            }
+        }
     }
 }
