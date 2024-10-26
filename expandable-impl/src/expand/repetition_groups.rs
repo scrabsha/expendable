@@ -226,8 +226,8 @@ mod tests {
             "$($foo:ident),*",
             "$($foo),*",
             expect![[r#"
-                span( ($foo:ident) ) => group 0
-                span( ($foo) )       => group 0
+                span( $($foo:ident),* ) => group 0
+                span( $($foo),* )       => group 0
             "#]],
         );
     }
@@ -238,10 +238,10 @@ mod tests {
             "$($foo:ident)* $($bar:ident)*",
             "$($foo)* $($bar)*",
             expect![[r#"
-                span( ($foo:ident) ) => group 0
-                span( ($bar:ident) ) => group 1
-                span( ($foo) )       => group 0
-                span( ($bar) )       => group 1
+                span( $($foo:ident)* ) => group 0
+                span( $($bar:ident)* ) => group 1
+                span( $($foo)* )       => group 0
+                span( $($bar)* )       => group 1
             "#]],
         );
     }
@@ -252,9 +252,9 @@ mod tests {
             "$($foo:ident)* $($bar:ident)*",
             "$($foo $bar)*",
             expect![[r#"
-                span( ($foo:ident) ) => group 1
-                span( ($bar:ident) ) => group 1
-                span( ($foo $bar) )  => group 1
+                span( $($foo:ident)* ) => group 1
+                span( $($bar:ident)* ) => group 1
+                span( $($foo $bar)* )  => group 1
             "#]],
         );
     }
@@ -265,9 +265,9 @@ mod tests {
             "$($foo:ident $bar:ident)*",
             "$($foo)* $($bar)*",
             expect![[r#"
-                span( ($foo:ident $bar:ident) ) => group 0
-                span( ($foo) )                  => group 0
-                span( ($bar) )                  => group 0
+                span( $($foo:ident $bar:ident)* ) => group 0
+                span( $($foo)* )                  => group 0
+                span( $($bar)* )                  => group 0
             "#]],
         );
     }
@@ -278,10 +278,10 @@ mod tests {
             "$($foo:ident $($bar:ident)*)*",
             "$($foo $($bar)*)*",
             expect![[r#"
-                span( ($foo:ident $($bar:ident)*) ) => group 0
-                span( ($bar:ident) )                => group 1
-                span( ($foo $($bar)*) )             => group 0
-                span( ($bar) )                      => group 1
+                span( $($foo:ident $($bar:ident)*)* ) => group 0
+                span( $($bar:ident)* )                => group 1
+                span( $($foo $($bar)*)* )             => group 0
+                span( $($bar)* )                      => group 1
             "#]],
         );
     }
@@ -292,10 +292,10 @@ mod tests {
             "$($foo:ident $($bar:ident)*)* $baz:ident",
             "$($($foo $bar $baz)*)*",
             expect![[r#"
-                span( ($foo:ident $($bar:ident)*) ) => group 0
-                span( ($bar:ident) )                => group 1
-                span( ($($foo $bar $baz)*) )        => group 0
-                span( ($foo $bar $baz) )            => group 1
+                span( $($foo:ident $($bar:ident)*)* ) => group 0
+                span( $($bar:ident)* )                => group 1
+                span( $($($foo $bar $baz)*)* )        => group 0
+                span( $($foo $bar $baz)* )            => group 1
             "#]],
         );
     }
@@ -306,10 +306,10 @@ mod tests {
             "$foo:ident $($bar:ident)* $($baz:ident)*",
             "$($foo $bar)* $($foo $baz)*",
             expect![[r#"
-                span( ($bar:ident) ) => group 1
-                span( ($baz:ident) ) => group 2
-                span( ($foo $bar) )  => group 1
-                span( ($foo $baz) )  => group 2
+                span( $($bar:ident)* ) => group 1
+                span( $($baz:ident)* ) => group 2
+                span( $($foo $bar)* )  => group 1
+                span( $($foo $baz)* )  => group 2
             "#]],
         );
     }
@@ -341,7 +341,7 @@ mod tests {
             expect![[r#"
                 Err(
                     RepetitionWithoutMetavariables {
-                        span: span( (1,) ),
+                        span: span( $(1,)* ),
                     },
                 )
             "#]],

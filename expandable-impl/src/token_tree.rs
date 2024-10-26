@@ -47,6 +47,15 @@ pub enum Separator {
 }
 
 impl Separator {
+    pub(crate) fn span(&self) -> Option<Span> {
+        match self {
+            Separator::Ident(ident) => Some(ident.span().into()),
+            Separator::Punct(punct) => Some(punct.span().into()),
+            Separator::Literal(literal) => Some(literal.span().into()),
+            Separator::None => None,
+        }
+    }
+
     pub(crate) fn to_token_tree(self) -> Option<GenericTokenTree> {
         match self {
             Separator::Ident(ident) => Some(GenericTokenTree::Ident(ident)),
@@ -339,7 +348,7 @@ impl TokenTree {
         iter: &mut impl Iterator<Item = GenericTokenTree>,
         group: GenericGroup,
     ) -> Result<TokenTree, Error> {
-        let span = group.span();
+        let mut span = dollar.join(group.span());
 
         let id = ctx.id();
 
@@ -398,6 +407,11 @@ impl TokenTree {
                 },
             }
         };
+
+        if let Some(separator_span) = separator.span() {
+            span = span.join(separator_span);
+        }
+        span = span.join(count_span);
 
         Ok(TokenTree::Repetition(Repetition {
             id,
@@ -784,7 +798,7 @@ mod tests {
                                 separator: None,
                                 count: ZeroOrMore,
                                 count_span: bytes(0..0),
-                                span: bytes(0..0),
+                                span: span( $ ),
                             },
                         ),
                     ],
@@ -810,7 +824,7 @@ mod tests {
                                 separator: None,
                                 count: ZeroOrMore,
                                 count_span: bytes(0..0),
-                                span: bytes(0..0),
+                                span: span( $ ),
                             },
                         ),
                     ],
@@ -928,14 +942,14 @@ mod tests {
                                             separator: None,
                                             count: ZeroOrMore,
                                             count_span: bytes(0..0),
-                                            span: bytes(0..0),
+                                            span: span( $ ),
                                         },
                                     ),
                                 ],
                                 separator: None,
                                 count: ZeroOrMore,
                                 count_span: bytes(0..0),
-                                span: bytes(0..0),
+                                span: span( $ ),
                             },
                         ),
                     ],
@@ -978,14 +992,14 @@ mod tests {
                                             separator: None,
                                             count: ZeroOrMore,
                                             count_span: bytes(0..0),
-                                            span: bytes(0..0),
+                                            span: span( $ ),
                                         },
                                     ),
                                 ],
                                 separator: None,
                                 count: ZeroOrMore,
                                 count_span: bytes(0..0),
-                                span: bytes(0..0),
+                                span: span( $ ),
                             },
                         ),
                     ],
