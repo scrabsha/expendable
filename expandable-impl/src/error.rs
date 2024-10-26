@@ -76,8 +76,9 @@ pub enum Error<Span = proc_macro2::Span> {
         where_: Span,
     },
 
-    /// A metavariable is defined at a lower depth than it is used at. At any given repetition
-    /// depth, it is only possible to use metavariables defined at the same or higher depth.
+    /// A metavariable is defined at a lower depth than it is used at. At any
+    /// given repetition depth, it is only possible to use metavariables
+    /// defined at the same or higher depth.
     #[non_exhaustive]
     MetavariableDefinedAtLowerDepth {
         /// The name of the metavariable that was used.
@@ -92,9 +93,10 @@ pub enum Error<Span = proc_macro2::Span> {
         usage_depth: usize,
     },
 
-    /// A repetition group (nor other repetitions nested into it) doesn't refer to any metavariable
-    /// defined at the same depth in the match arm. This means it's not possible to determine how
-    /// much that repetition should be repeated.
+    /// A repetition group (nor other repetitions nested into it) doesn't refer
+    /// to any metavariable defined at the same depth in the match arm. This
+    /// means it's not possible to determine how much that repetition should
+    /// be repeated.
     #[non_exhaustive]
     RepetitionWithoutMetavariables {
         /// Where the repetition is defined.
@@ -137,8 +139,18 @@ pub enum Error<Span = proc_macro2::Span> {
         got_nesting: Vec<RepetitionQuantifierKind>,
     },
 
-    #[cfg_attr(not(test), expect(missing_docs))] // TODO: document
+    /// When an invalid repetition separator is being used.
+    ///
+    /// This corresponds to the following situation:
+    ///
+    /// ```rust,compile_fail
+    /// $( /* tokens */ )()*
+    /// ```
+    ///
+    /// The only valid repetition separators are punctuations, idents and
+    /// literals.
     InvalidSeparator {
+        /// The tree that is being wrongly repeated.
         tree: TokenTree,
     },
 }
