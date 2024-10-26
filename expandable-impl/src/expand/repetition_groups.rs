@@ -25,6 +25,9 @@ use crate::{
     token_tree::{RepetitionId, Span, TokenTree},
 };
 
+type MetavarDefinitions = BTreeMap<String, MetavarDefinition>;
+type GhostMetavarsForRepetitions = BTreeMap<RepetitionId, Vec<Metavar>>;
+
 #[derive(Debug)]
 pub(super) struct RepetitionGroups {
     by_repetition: BTreeMap<RepetitionId, GroupId>,
@@ -32,10 +35,16 @@ pub(super) struct RepetitionGroups {
 
 impl RepetitionGroups {
     pub(super) fn new(matcher: &[TokenTree], transcriber: &[TokenTree]) -> Result<Self, Error> {
+        let metavar_definitions = metavar_definitions(matcher);
         let mut grouper = Grouper {
             next_group_id: 0,
             repetitions_stack: Vec::new(),
-            metavar_definitions: metavar_definitions(matcher),
+            ghost_metavars_for_repetitions: ghost_metavars_for_repetitions(
+                &metavar_definitions,
+                matcher,
+                transcriber,
+            ),
+            metavar_definitions,
             by_repetition: BTreeMap::new(),
             by_metavar: BTreeMap::new(),
         };
@@ -74,10 +83,11 @@ struct Grouper {
     next_group_id: usize,
 
     repetitions_stack: Vec<RepetitionId>,
-    metavar_definitions: BTreeMap<String, MetavarDefinition>,
+    metavar_definitions: MetavarDefinitions,
+    ghost_metavars_for_repetitions: GhostMetavarsForRepetitions,
 
     by_repetition: BTreeMap<RepetitionId, GroupId>,
-    by_metavar: BTreeMap<String, GroupId>,
+    by_metavar: BTreeMap<Metavar, GroupId>,
 }
 
 impl Grouper {
@@ -94,9 +104,20 @@ impl Grouper {
 
             TokenTree::Repetition(repetition) => {
                 self.repetitions_stack.push(repetition.id);
+
                 for token in &repetition.content {
                     self.ingest(token)?;
                 }
+
+                // TODO: explain what this is.
+                for metavar in self
+                    .ghost_metavars_for_repetitions
+                    .remove(&repetition.id)
+                    .expect("no ghost entry for repetition")
+                {
+                    self.ingest_metavar(metavar, Some(repetition.id));
+                }
+
                 self.repetitions_stack.pop();
 
                 // Check whether there were no metavariables attached to this repetition.
@@ -155,28 +176,32 @@ impl Grouper {
                     Some(self.repetitions_stack[definition.depth - 1])
                 };
 
-                // This can be `None` if either we are inside of a repetition and there is no
-                // group assigned to it *yet*, or if we are outside of a
-                // repetition.
-                let existing_repetition_group = match &repetition {
-                    Some(id) => self.by_repetition.get(id).copied(),
-                    None => None,
-                };
-                let existing_metavar_group = self.by_metavar.get(&name).copied();
-
-                let group = match (existing_metavar_group, existing_repetition_group) {
-                    (Some(group), None) | (None, Some(group)) => group,
-                    (Some(lhs), Some(rhs)) => self.merge_groups(lhs, rhs),
-                    (None, None) => self.new_group(),
-                };
-
-                self.by_metavar.insert(name, group);
-                if let Some(repetition) = repetition {
-                    self.by_repetition.insert(repetition, group);
-                }
+                self.ingest_metavar(Metavar::Real(name), repetition);
             }
         }
         Ok(())
+    }
+
+    fn ingest_metavar(&mut self, var: Metavar, repetition: Option<RepetitionId>) {
+        // This can be `None` if either we are inside of a repetition and there is no
+        // group assigned to it *yet*, or if we are outside of a
+        // repetition.
+        let existing_repetition_group = match &repetition {
+            Some(id) => self.by_repetition.get(id).copied(),
+            None => None,
+        };
+        let existing_metavar_group = self.by_metavar.get(&var).copied();
+
+        let group = match (existing_metavar_group, existing_repetition_group) {
+            (Some(group), None) | (None, Some(group)) => group,
+            (Some(lhs), Some(rhs)) => self.merge_groups(lhs, rhs),
+            (None, None) => self.new_group(),
+        };
+
+        self.by_metavar.insert(var, group);
+        if let Some(repetition) = repetition {
+            self.by_repetition.insert(repetition, group);
+        }
     }
 
     fn merge_groups(&mut self, lhs: GroupId, rhs: GroupId) -> GroupId {
@@ -204,17 +229,96 @@ impl Grouper {
     }
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
+enum Metavar {
+    Real(String),
+    Ghost(usize),
+}
+
+impl std::fmt::Debug for Metavar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Real(name) => write!(f, "${name}"),
+            Self::Ghost(idx) => write!(f, "ghost({idx})"),
+        }
+    }
+}
+
+// TODO: refactor this
+// TODO: explain what this is
+fn ghost_metavars_for_repetitions(
+    metavar_definitions: &MetavarDefinitions,
+    matcher: &[TokenTree],
+    transcriber: &[TokenTree],
+) -> GhostMetavarsForRepetitions {
+    fn recurse(
+        result: &mut BTreeMap<RepetitionId, Vec<Metavar>>,
+        metavar_definitions: &BTreeMap<String, MetavarDefinition>,
+        depth: usize,
+        token: &TokenTree,
+    ) -> Vec<String> {
+        let mut nested_metavars = Vec::new();
+        match token {
+            TokenTree::Ident(_) | TokenTree::Punct(_) | TokenTree::Literal(_) => {}
+            TokenTree::Metavariable(meta) => nested_metavars.push(meta.name.to_string()),
+            TokenTree::Group(group) => {
+                nested_metavars.extend(
+                    group
+                        .content
+                        .iter()
+                        .flat_map(|token| recurse(result, metavar_definitions, depth, token)),
+                );
+            }
+            TokenTree::Repetition(repetition) => {
+                nested_metavars.extend(
+                    repetition
+                        .content
+                        .iter()
+                        .flat_map(|token| recurse(result, metavar_definitions, depth + 1, token)),
+                );
+                result.insert(
+                    repetition.id,
+                    nested_metavars
+                        .iter()
+                        .flat_map(|metavar| {
+                            metavar_definitions
+                                .get(metavar)
+                                .expect("metavar not in the definitions")
+                                .ghost_metavars
+                                .iter()
+                                .filter(|(ghost_depth, _)| **ghost_depth == depth + 1)
+                                .map(|(_, ghost)| ghost.clone())
+                        })
+                        .collect(),
+                );
+            }
+        }
+        nested_metavars
+    }
+
+    let mut result = BTreeMap::new();
+    for token in matcher.iter().chain(transcriber.iter()) {
+        recurse(&mut result, metavar_definitions, 0, token);
+    }
+    result
+}
+
 /// Gather the definitions of all metavariables, so that they can be referenced
 /// during grouping.
-fn metavar_definitions(matcher: &[TokenTree]) -> BTreeMap<String, MetavarDefinition> {
-    fn recurse(result: &mut BTreeMap<String, MetavarDefinition>, depth: usize, token: &TokenTree) {
+fn metavar_definitions(matcher: &[TokenTree]) -> MetavarDefinitions {
+    fn recurse(
+        result: &mut MetavarDefinitions,
+        next_ghost: &mut usize,
+        depth: usize,
+        token: &TokenTree,
+    ) {
         match token {
             TokenTree::Ident(_) => {}
             TokenTree::Punct(_) => {}
             TokenTree::Literal(_) => {}
             TokenTree::Group(group) => {
                 for token in &group.content {
-                    recurse(result, depth, token);
+                    recurse(result, next_ghost, depth, token);
                 }
             }
             TokenTree::Metavariable(meta) => {
@@ -228,22 +332,31 @@ fn metavar_definitions(matcher: &[TokenTree]) -> BTreeMap<String, MetavarDefinit
                     "duplicate metavariable name {name}"
                 );
 
+                // TODO: explain what this is
+                let mut ghost_metavars = BTreeMap::new();
+                for ghost_depth in 1..depth {
+                    ghost_metavars.insert(ghost_depth, Metavar::Ghost(*next_ghost));
+                    *next_ghost += 1;
+                }
+
                 result.insert(name, MetavarDefinition {
                     span: meta.span,
                     depth,
+                    ghost_metavars,
                 });
             }
             TokenTree::Repetition(repetition) => {
                 for token in &repetition.content {
-                    recurse(result, depth + 1, token);
+                    recurse(result, next_ghost, depth + 1, token);
                 }
             }
         }
     }
 
     let mut result = BTreeMap::new();
+    let mut next_ghost = 0;
     for token in matcher {
-        recurse(&mut result, 0, token);
+        recurse(&mut result, &mut next_ghost, 0, token);
     }
 
     result
@@ -253,6 +366,7 @@ fn metavar_definitions(matcher: &[TokenTree]) -> BTreeMap<String, MetavarDefinit
 struct MetavarDefinition {
     span: Span,
     depth: usize,
+    ghost_metavars: BTreeMap<usize, Metavar>,
 }
 
 #[cfg(test)]
@@ -377,13 +491,13 @@ mod tests {
 
     #[test]
     fn test_repetition_with_metavariable_inside_repetition_without_one() {
-        // TODO: this should work
         do_test_groups("$($($a:ident)*)*", "$($($a)*)* $($($a)*)*", expect! {[r#"
-            Err(
-                RepetitionWithoutMetavariables {
-                    span: span( $($($a:ident)*)* ),
-                },
-            )
+            span( $($($a:ident)*)* ) => group 1
+            span( $($a:ident)* )     => group 0
+            span( $($($a)*)* )       => group 1
+            span( $($a)* )           => group 0
+            span( $($($a)*)* )       => group 1
+            span( $($a)* )           => group 0
         "#]});
     }
 
@@ -391,10 +505,11 @@ mod tests {
     fn test_repetition_with_metavariable_inside_repetition_without_one_inside_repetition_without_metavariables()
      {
         // TODO: find a better name for this test lmao
+        // TODO: it points to the wrong span???
         do_test_groups("$($($a:ident)*)*", "$($($($a)*)*)*", expect! {[r#"
             Err(
                 RepetitionWithoutMetavariables {
-                    span: span( $($($a:ident)*)* ),
+                    span: span( $($a)* ),
                 },
             )
         "#]});
@@ -412,26 +527,119 @@ mod tests {
     }
 
     #[test]
+    fn test_ghost_metavars_for_repetitions() {
+        // TODO: better rendering for this
+        do_test_ghost_metavars_for_repetitions(
+            "$($($a:ident)* $($b:ident $($c:ident)*)*)* $($d:ident $($e:ident)*)*",
+            "$($($a)* $($b $($c)*)*)* $($d $($e)*)*",
+            expect![[r#"
+                Output {
+                    metavar_definitions: {
+                        "a": MetavarDefinition {
+                            span: span( $a:ident ),
+                            depth: 2,
+                            ghost_metavars: {
+                                1: ghost(0),
+                            },
+                        },
+                        "b": MetavarDefinition {
+                            span: span( $b:ident ),
+                            depth: 2,
+                            ghost_metavars: {
+                                1: ghost(1),
+                            },
+                        },
+                        "c": MetavarDefinition {
+                            span: span( $c:ident ),
+                            depth: 3,
+                            ghost_metavars: {
+                                1: ghost(2),
+                                2: ghost(3),
+                            },
+                        },
+                        "d": MetavarDefinition {
+                            span: span( $d:ident ),
+                            depth: 1,
+                            ghost_metavars: {},
+                        },
+                        "e": MetavarDefinition {
+                            span: span( $e:ident ),
+                            depth: 2,
+                            ghost_metavars: {
+                                1: ghost(4),
+                            },
+                        },
+                    },
+                    ghost_metavars_for_repetitions: {
+                        repetition 0: [
+                            ghost(0),
+                            ghost(1),
+                            ghost(2),
+                        ],
+                        repetition 1: [],
+                        repetition 2: [
+                            ghost(3),
+                        ],
+                        repetition 3: [],
+                        repetition 4: [
+                            ghost(4),
+                        ],
+                        repetition 5: [],
+                        repetition 6: [
+                            ghost(0),
+                            ghost(1),
+                            ghost(2),
+                        ],
+                        repetition 7: [],
+                        repetition 8: [
+                            ghost(3),
+                        ],
+                        repetition 9: [],
+                        repetition 10: [
+                            ghost(4),
+                        ],
+                        repetition 11: [],
+                    },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn test_definitions() {
         do_test_definitions(
-            "foo $bar:ident [ foo $($foo:ident $baz:ident $($quux:ident),*)* ]",
+            "foo $bar:ident [ foo $($foo:ident $baz:ident $($quux:ident $($hello:ident)*),*)* ]",
             expect![[r#"
                 {
                     "bar": MetavarDefinition {
                         span: span( $bar:ident ),
                         depth: 0,
+                        ghost_metavars: {},
                     },
                     "baz": MetavarDefinition {
                         span: span( $baz:ident ),
                         depth: 1,
+                        ghost_metavars: {},
                     },
                     "foo": MetavarDefinition {
                         span: span( $foo:ident ),
                         depth: 1,
+                        ghost_metavars: {},
+                    },
+                    "hello": MetavarDefinition {
+                        span: span( $hello:ident ),
+                        depth: 3,
+                        ghost_metavars: {
+                            1: ghost(1),
+                            2: ghost(2),
+                        },
                     },
                     "quux": MetavarDefinition {
                         span: span( $quux:ident ),
                         depth: 2,
+                        ghost_metavars: {
+                            1: ghost(0),
+                        },
                     },
                 }
             "#]],
@@ -489,6 +697,29 @@ mod tests {
         let mut ctx = ParseCtxt::matcher();
         let tokens = TokenTree::from_generic(&mut ctx, input.parse().unwrap()).unwrap();
         expect.assert_debug_eq(&metavar_definitions(&tokens));
+    }
+
+    fn do_test_ghost_metavars_for_repetitions(matcher: &str, transcriber: &str, expect: Expect) {
+        #[derive(Debug)]
+        struct Output {
+            metavar_definitions: MetavarDefinitions,
+            ghost_metavars_for_repetitions: GhostMetavarsForRepetitions,
+        }
+
+        let mut ctx = ParseCtxt::matcher();
+        let matcher = TokenTree::from_generic(&mut ctx, matcher.parse().unwrap()).unwrap();
+        ctx.turn_into_transcriber();
+        let transcriber = TokenTree::from_generic(&mut ctx, transcriber.parse().unwrap()).unwrap();
+
+        let metavar_definitions = metavar_definitions(&matcher);
+        expect.assert_debug_eq(&Output {
+            ghost_metavars_for_repetitions: ghost_metavars_for_repetitions(
+                &metavar_definitions,
+                &matcher,
+                &transcriber,
+            ),
+            metavar_definitions,
+        });
     }
 
     fn find_repetition_spans(spans: &mut HashMap<RepetitionId, Span>, token: &TokenTree) {
