@@ -1,9 +1,7 @@
 // Architectural invariant: this module contains types that are useful for error
 // reporting and nothing else.
 
-use proc_macro2::TokenTree;
-
-use crate::token_tree::Span;
+use crate::token_tree::{Span, TokenTree};
 
 /// An error that is generated when checking an incorrect macro.
 ///
@@ -17,7 +15,7 @@ use crate::token_tree::Span;
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
-    /// Generated when the macro definition itself doesn't parse correctly.
+    /// Generated when one of the matcher or transcriber does not parse.
     ///
     /// The Rust compiler is likely to emit an error anyway. Below is an
     /// example of code that triggers this error:
@@ -37,6 +35,26 @@ pub enum Error {
         what: Vec<MacroRuleNode>,
         /// Where it was expected.
         where_: Span,
+    },
+
+    /// Generated when the macro arms don't parse.
+    ///
+    /// The Rust compiler is likely to emit an error anyway. Below is an
+    /// example of code that triggers this error:
+    ///
+    /// ```rust,compile_fail
+    /// macro_rules! blatant_error {
+    ///     () => =>;
+    ///     //    |
+    ///     //    error: macro rhs must be delimited.
+    /// }
+    /// ```
+    ///
+    /// This prevents us from doing any analyses.
+    #[non_exhaustive]
+    SynError {
+        /// The exact error that `syn` returned to us.
+        error: syn::Error,
     },
 
     /// An EOF was reached when it was not expected.
@@ -154,6 +172,12 @@ pub enum Error {
         /// The tree that is being wrongly repeated.
         tree: TokenTree,
     },
+}
+
+impl From<syn::Error> for Error {
+    fn from(error: syn::Error) -> Error {
+        Error::SynError { error }
+    }
 }
 
 /// Various nodes that can be expected in a `macro_rules!` invocation.

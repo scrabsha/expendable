@@ -123,7 +123,7 @@ impl Grouper {
                 // Check whether there were no metavariables attached to this repetition.
                 if !self.by_repetition.contains_key(&repetition.id) {
                     return Err(Error::RepetitionWithoutMetavariables {
-                        span: repetition.span.into(),
+                        span: repetition.span,
                     });
                 }
             }
@@ -141,8 +141,8 @@ impl Grouper {
                 } else if definition.depth > self.repetitions_stack.len() {
                     return Err(Error::MetavariableDefinedAtLowerDepth {
                         name,
-                        definition_span: definition.span.into(),
-                        usage_span: meta.span.into(),
+                        definition_span: definition.span,
+                        usage_span: meta.span,
                         definition_depth: definition.depth,
                         usage_depth: self.repetitions_stack.len(),
                     });

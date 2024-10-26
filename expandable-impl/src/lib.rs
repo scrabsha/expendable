@@ -22,6 +22,7 @@
     clippy::used_underscore_binding,
     clippy::wildcard_imports
 )]
+#![expect(clippy::result_large_err)]
 
 //! <div class="title-block" style="text-align: center;" align="center">
 //! <h1><code>expandable-impl</code></h1>
@@ -39,9 +40,10 @@
 //! Let's use it on `js_concat`:
 //!
 //! ```
-//! use expandable_impl::{InvocationContext, quote};
+//! # use expandable_impl::parse_quote;
+//! use expandable_impl::InvocationContext;
 //!
-//! let err = expandable_impl::check_macro(InvocationContext::Item, quote! {
+//! let err = expandable_impl::check_macro(InvocationContext::Item, parse_quote! {
 //!     (@left:expr, @right:expr) => {
 //!        @left ++ @right
 //!     };
@@ -80,19 +82,110 @@ use std::{marker::Copy, str::FromStr};
 
 pub use error::{Error, MacroRuleNode};
 pub use proc_macro2::TokenStream;
+#[doc(hidden)]
+pub use syn::parse_quote;
+use syn::{
+    Token, braced, parenthesized,
+    parse::{Parse, ParseStream},
+    punctuated::Punctuated,
+    token::{Brace, Paren},
+};
+use token_tree::{ParseCtxt, TokenTree};
 
 mod error;
 mod expand;
 pub mod token_tree;
+mod validation;
 
 /// The whole point.
 ///
 /// This functions takes all the tokens that have been passed to the macro
 /// invocation and performs all the checks that have been implemented in this
 /// crate.
-#[expect(unused_variables)]
 pub fn check_macro(ctx: InvocationContext, input: TokenStream) -> Result<(), Error> {
-    todo!()
+    let body = syn::parse2::<MacroBody>(input)?;
+
+    body.arms
+        .into_iter()
+        .try_for_each(|arm| check_arm(ctx, arm))?;
+
+    Ok(())
+}
+
+#[expect(unused_variables)]
+fn check_arm(ctx: InvocationContext, arm: MacroArm) -> Result<(), Error> {
+    let mut ctx = ParseCtxt::matcher();
+    let matcher = TokenTree::from_generic(&mut ctx, arm.matcher.stream)?;
+    ctx.turn_into_transcriber();
+    let transcriber = TokenTree::from_generic(&mut ctx, arm.transcriber.stream)?;
+
+    validation::validate(&matcher, &transcriber)?;
+
+    todo!("check_arm");
+
+    #[expect(unreachable_code)]
+    Ok(())
+}
+
+struct MacroBody {
+    arms: Punctuated<MacroArm, Token![;]>,
+}
+
+impl Parse for MacroBody {
+    fn parse(input: ParseStream) -> syn::Result<MacroBody> {
+        Ok(MacroBody {
+            arms: Punctuated::parse_terminated(input)?,
+        })
+    }
+}
+
+struct MacroArm {
+    matcher: Matcher,
+    #[allow(dead_code)]
+    fat_arrow: Token![=>],
+    transcriber: Transcriber,
+}
+
+impl Parse for MacroArm {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        Ok(MacroArm {
+            matcher: input.parse()?,
+            fat_arrow: input.parse()?,
+            transcriber: input.parse()?,
+        })
+    }
+}
+
+struct Matcher {
+    #[allow(dead_code)]
+    paren: Paren,
+    stream: TokenStream,
+}
+
+impl Parse for Matcher {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let inner;
+        Ok(Matcher {
+            paren: parenthesized!(inner in input),
+            stream: inner.parse()?,
+        })
+    }
+}
+
+struct Transcriber {
+    #[allow(dead_code)]
+    brace: Brace,
+    stream: TokenStream,
+}
+
+impl Parse for Transcriber {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let inner;
+        Ok(Transcriber {
+            brace: braced!(inner in input),
+            stream: inner.parse()?,
+        })
+    }
 }
 
 /// The contexts in which a macro can be called.
@@ -171,7 +264,8 @@ impl FromStr for FragmentKind {
 }
 
 impl FragmentKind {
-    fn to_str(self) -> &'static str {
+    #[expect(missing_docs)]
+    pub fn to_str(self) -> &'static str {
         match self {
             FragmentKind::Block => "block",
             FragmentKind::Expr => "expr",

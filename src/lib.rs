@@ -65,8 +65,9 @@ extern crate proc_macro;
 
 use std::collections::BTreeSet;
 
+use expandable_impl::token_tree::TokenTree;
 use proc_macro::TokenStream as TokenStream1;
-use proc_macro2::{Span, TokenTree};
+use proc_macro2::Span as GenericSpan;
 use syn_shim::ItemMacroRules;
 
 mod syn_shim;
@@ -128,31 +129,16 @@ fn mk_error_msg(error: expandable_impl::Error) -> syn::Error {
             (format!("Unbound metavariable `{name}`"), Some(where_))
         }
 
-        // expandable_impl::Error::InvalidRepetitionNesting {
-        //     metavariable_name,
-        //     usage_span,
-        //     expected_nesting,
-        //     got_nesting,
-        //     ..
-        // } => {
-        //     let expected_nesting = pp_repetition_ops(&expected_nesting);
-        //     let got_nesting = pp_repetition_ops(&got_nesting);
-
-        //     (
-        //         format!(
-        //             "the repetition used for `{metavariable_name}` ({got_nesting}) is different \
-        //              from how it is matched ({expected_nesting})."
-        //         ),
-        //         Some(usage_span),
-        //     )
-        // }
         _ => (
             "`expandable` returned an error the expandable macro does not handle (yet)".to_string(),
             None,
         ),
     };
 
-    let span = span.map(Span::from).unwrap_or_else(Span::call_site);
+    let span = span
+        .map(GenericSpan::from)
+        .unwrap_or_else(GenericSpan::call_site);
+
     syn::Error::new(span, message)
 }
 
@@ -163,12 +149,13 @@ fn rassemble_expected_descrs(expected: Vec<TokenTree>) -> String {
     // `BtreeSet`s have set properties (no duplicate), and they give us a cool
     // ordering.
 
-    #[expect(unused_mut)]
     let (mut possible_fragments, mut rest) = (BTreeSet::<String>::new(), BTreeSet::new());
 
-    #[expect(unused)]
     for expected in expected {
-        todo!();
+        match describe(expected) {
+            Description::Fragment(fragment) => possible_fragments.insert(fragment),
+            Description::Other(other) => rest.insert(other),
+        };
     }
 
     let mut expected = possible_fragments.into_iter().collect::<Vec<_>>();
@@ -190,6 +177,25 @@ fn rassemble_expected_descrs(expected: Vec<TokenTree>) -> String {
     };
 
     format!("{expected}{or_n_others}")
+}
+
+fn describe(token_tree: TokenTree) -> Description {
+    match token_tree {
+        TokenTree::Ident(ident) => Description::Other(ident.to_string()),
+        TokenTree::Punct(punct) => Description::Other(punct.to_string()),
+        TokenTree::Literal(literal) => Description::Other(literal.to_string()),
+        TokenTree::Group(_) => Description::Other("a group".to_string()),
+        TokenTree::Metavariable(metavariable) => {
+            let descr = metavariable.kind.to_str();
+            Description::Fragment(format!("a {descr}"))
+        }
+        TokenTree::Repetition(_) => unreachable!(),
+    }
+}
+
+enum Description {
+    Fragment(String),
+    Other(String),
 }
 
 #[cfg(test)]

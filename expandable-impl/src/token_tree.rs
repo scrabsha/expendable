@@ -139,11 +139,11 @@ impl Separator {
         }
     }
 
-    pub(crate) fn into_token_tree(self) -> Option<GenericTokenTree> {
+    pub(crate) fn into_token_tree(self) -> Option<TokenTree> {
         match self {
-            Separator::Ident(ident) => Some(GenericTokenTree::Ident(ident)),
-            Separator::Punct(punct) => Some(GenericTokenTree::Punct(punct)),
-            Separator::Literal(literal) => Some(GenericTokenTree::Literal(literal)),
+            Separator::Ident(ident) => Some(TokenTree::Ident(ident)),
+            Separator::Punct(punct) => Some(TokenTree::Punct(punct)),
+            Separator::Literal(literal) => Some(TokenTree::Literal(literal)),
             Separator::None => None,
         }
     }
@@ -249,7 +249,6 @@ pub(crate) struct ParseCtxt {
 }
 
 impl ParseCtxt {
-    #[cfg_attr(not(test), expect(dead_code))] // TODO: use it
     pub(crate) fn matcher() -> ParseCtxt {
         let mode = ParseMode::Matcher;
         ParseCtxt {
@@ -259,7 +258,6 @@ impl ParseCtxt {
         }
     }
 
-    #[cfg_attr(not(test), expect(dead_code))] // TODO: use it
     pub(crate) fn turn_into_transcriber(&mut self) {
         self.mode = ParseMode::Transcriber;
     }
@@ -279,7 +277,6 @@ pub(crate) enum ParseMode {
 }
 
 impl TokenTree {
-    #[cfg_attr(not(test), expect(dead_code))] // TODO: use it
     pub(crate) fn from_generic(
         ctx: &mut ParseCtxt,
         tokens: GenericTokenStream,
@@ -366,7 +363,7 @@ impl TokenTree {
                 // :
                 let Some(token) = iter.next() else {
                     return Err(Error::UnexpectedEnd {
-                        last_token: Some(span.into()),
+                        last_token: Some(span),
                     });
                 };
                 let GenericTokenTree::Punct(token) = token else {
@@ -406,7 +403,7 @@ impl TokenTree {
                 let Ok(kind) = ident.to_string().parse() else {
                     return Err(Error::ParsingFailed {
                         what: vec![MacroRuleNode::FragmentSpecifier],
-                        where_: span.into(),
+                        where_: span,
                     });
                 };
 
@@ -428,7 +425,7 @@ impl TokenTree {
                         .get(&name)
                         .ok_or_else(|| Error::UnboundMetavariable {
                             name: name.to_string(),
-                            where_: span.into(),
+                            where_: span,
                         })?;
 
                 (kind, None)
@@ -460,7 +457,7 @@ impl TokenTree {
         let mut try_parse_quantifier = || -> Result<_, Error> {
             let Some(token) = iter.next() else {
                 return Err(Error::UnexpectedEnd {
-                    last_token: Some(span.into()),
+                    last_token: Some(span),
                 });
             };
 
@@ -505,6 +502,7 @@ impl TokenTree {
                             Some(tree) => tree,
                             None => unreachable!(),
                         };
+
                         return Err(Error::InvalidSeparator { tree });
                     }
                 },
@@ -542,7 +540,6 @@ impl TokenTree {
         })
     }
 
-    #[cfg_attr(not(test), expect(dead_code))] // TODO: use it
     pub(crate) fn into_generic(stream: Vec<TokenTree>, mode: ParseMode) -> GenericTokenStream {
         stream
             .into_iter()
@@ -639,13 +636,13 @@ impl TokenTree {
 
                 // sep
                 if let Some(mut tree) = repetition.separator.into_token_tree() {
-                    if let GenericTokenTree::Punct(ref mut punct) = tree {
+                    if let TokenTree::Punct(ref mut punct) = tree {
                         // Set appropriate spacing here - we know the next token
                         // going to be a punct as well!
                         let ch = punct.as_char();
                         *punct = Punct::new(ch, Spacing::Joint);
                     }
-                    tokens.extend(iter::once(tree));
+                    tree.into_generic_tree(mode, tokens);
                 }
 
                 // count
