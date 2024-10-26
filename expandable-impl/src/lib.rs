@@ -85,6 +85,7 @@ pub use grammar::TokenDescription;
 #[macro_use]
 mod macros;
 mod error;
+mod expand;
 mod expansion;
 mod grammar;
 mod list;

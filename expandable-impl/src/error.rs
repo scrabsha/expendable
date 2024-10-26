@@ -1,7 +1,7 @@
 // Architectural invariant: this module contains types that are useful for error
 // reporting and nothing else.
 
-use proc_macro2::{Span, TokenTree};
+use proc_macro2::TokenTree;
 
 use crate::{RepetitionQuantifierKind, Terminal, grammar::TokenDescription};
 
@@ -74,6 +74,31 @@ pub enum Error<Span = proc_macro2::Span> {
         name: String,
         /// Where it was used.
         where_: Span,
+    },
+
+    /// A metavariable is defined at a lower depth than it is used at. At any given repetition
+    /// depth, it is only possible to use metavariables defined at the same or higher depth.
+    #[non_exhaustive]
+    MetavariableDefinedAtLowerDepth {
+        /// The name of the metavariable that was used.
+        name: String,
+        /// Where it was defined.
+        definition_span: Span,
+        /// Where it was used.
+        usage_span: Span,
+        /// The depth at which the metavariable was defined.
+        definition_depth: usize,
+        /// The depth at which the metavariable was used.
+        usage_depth: usize,
+    },
+
+    /// A repetition group (nor other repetitions nested into it) doesn't refer to any metavariable
+    /// defined at the same depth in the match arm. This means it's not possible to determine how
+    /// much that repetition should be repeated.
+    #[non_exhaustive]
+    RepetitionWithoutMetavariables {
+        /// Where the repetition is defined.
+        span: Span,
     },
 
     /// A variable is being repeated with a sequence of operator that does not
