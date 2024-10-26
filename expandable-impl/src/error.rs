@@ -137,6 +137,7 @@ pub enum Error<Span = proc_macro2::Span> {
         got_nesting: Vec<RepetitionQuantifierKind>,
     },
 
+    #[cfg_attr(not(test), expect(missing_docs))] // TODO: document
     InvalidSeparator {
         tree: TokenTree,
     },

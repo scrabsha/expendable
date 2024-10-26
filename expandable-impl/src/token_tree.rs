@@ -100,6 +100,7 @@ pub(crate) struct ParseCtxt {
 }
 
 impl ParseCtxt {
+    #[cfg_attr(not(test), expect(dead_code))] // TODO: use it
     pub(crate) fn matcher() -> ParseCtxt {
         let mode = ParseMode::Matcher;
         ParseCtxt {
@@ -109,16 +110,9 @@ impl ParseCtxt {
         }
     }
 
+    #[cfg_attr(not(test), expect(dead_code))] // TODO: use it
     pub(crate) fn turn_into_transcriber(&mut self) {
         self.mode = ParseMode::Transcriber;
-    }
-
-    fn with_mode(mode: ParseMode) -> ParseCtxt {
-        ParseCtxt {
-            counter: 0,
-            mode,
-            metavariables: HashMap::new(),
-        }
     }
 
     fn id(&mut self) -> RepetitionId {
@@ -130,12 +124,13 @@ impl ParseCtxt {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-enum ParseMode {
+pub(crate) enum ParseMode {
     Matcher,
     Transcriber,
 }
 
 impl TokenTree {
+    #[cfg_attr(not(test), expect(dead_code))] // TODO: use it
     pub(crate) fn from_generic(
         ctx: &mut ParseCtxt,
         tokens: GenericTokenStream,
@@ -386,7 +381,8 @@ impl TokenTree {
         })
     }
 
-    fn into_generic(stream: Vec<TokenTree>, mode: ParseMode) -> GenericTokenStream {
+    #[expect(dead_code)] // TODO: use it
+    pub(crate) fn into_generic(stream: Vec<TokenTree>, mode: ParseMode) -> GenericTokenStream {
         stream
             .into_iter()
             .fold(GenericTokenStream::new(), |mut stream, tree| {
