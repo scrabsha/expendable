@@ -8,7 +8,6 @@ use proc_macro2::{
 };
 
 use crate::{Error, FragmentKind, MacroRuleNode};
-use std::ops::Deref;
 
 #[derive(Debug, Clone)]
 pub enum TokenTree {
@@ -108,14 +107,6 @@ impl From<GenericSpan> for Span {
 impl Into<GenericSpan> for Span {
     fn into(self) -> GenericSpan {
         self.inner
-    }
-}
-
-impl Deref for Span {
-    type Target = GenericSpan;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
     }
 }
 
