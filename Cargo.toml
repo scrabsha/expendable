@@ -11,6 +11,7 @@ license = "MIT OR Apache-2.0"
 edition = "2021"
 version = "0.1.1"
 rust-version = "1.70.0"
+repository = "https://github.com/scrabsha/expandable"
 
 [workspace.dependencies]
 # MSRV: 1.70 (checked in CI)
@@ -28,6 +29,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
