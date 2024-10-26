@@ -1,9 +1,7 @@
 // Architectural invariant: this module contains types that are useful for error
 // reporting and nothing else.
 
-use proc_macro2::TokenTree;
-
-use crate::{RepetitionQuantifierKind, Terminal, grammar::TokenDescription};
+use proc_macro2::{Span, TokenTree};
 
 /// An error that is generated when checking an incorrect macro.
 ///
@@ -16,7 +14,7 @@ use crate::{RepetitionQuantifierKind, Terminal, grammar::TokenDescription};
 /// [`check_macro`]: crate::check_macro
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum Error<Span = crate::token_tree::Span> {
+pub enum Error {
     /// Generated when the macro definition itself doesn't parse correctly.
     ///
     /// The Rust compiler is likely to emit an error anyway. Below is an
@@ -56,11 +54,11 @@ pub enum Error<Span = crate::token_tree::Span> {
         /// Where the error happens.
         span: Span,
         /// What tokens are expected here.
-        expected: Vec<TokenDescription>,
+        expected: Vec<TokenTree>,
         /// A possible expansion of the macro that exhibits a parsing error.
         ///
         /// The expansion may contain fragments.
-        counter_example: Vec<(TokenDescription, Span)>,
+        counter_example: Vec<TokenTree>,
     },
 
     /// A macro expansion refers to a metavariable that is not defined in the
@@ -103,6 +101,7 @@ pub enum Error<Span = crate::token_tree::Span> {
         span: Span,
     },
 
+    /*
     /// A variable is being repeated with a sequence of operator that does not
     /// match the one used when the variable was declared.
     ///
@@ -138,7 +137,7 @@ pub enum Error<Span = crate::token_tree::Span> {
         /// The nesting encountered when the metavariable was used.
         got_nesting: Vec<RepetitionQuantifierKind>,
     },
-
+    */
     /// When an invalid repetition separator is being used.
     ///
     /// This corresponds to the following situation:
@@ -156,7 +155,7 @@ pub enum Error<Span = crate::token_tree::Span> {
 }
 
 /// Various nodes that can be expected in a `macro_rules!` invocation.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum MacroRuleNode {
     /// A matcher (everything that comes _before_ the `=>` of a macro rule.
@@ -176,5 +175,5 @@ pub enum MacroRuleNode {
     /// A repetition separator (the `,` in `$( $expr ),*`).
     RepetitionSeparator,
     /// Any terminal.
-    Terminal(Terminal),
+    Terminal(TokenTree),
 }
