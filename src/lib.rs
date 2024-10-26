@@ -152,7 +152,7 @@ fn mk_error_msg(error: expandable_impl::Error) -> syn::Error {
         ),
     };
 
-    let span = span.unwrap_or_else(Span::call_site);
+    let span = span.map(Span::from).unwrap_or_else(Span::call_site);
     syn::Error::new(span, message)
 }
 

@@ -1,7 +1,9 @@
 // Architectural invariant: this module contains types that are useful for error
 // reporting and nothing else.
 
-use proc_macro2::{Span, TokenTree};
+use proc_macro2::TokenTree;
+
+use crate::token_tree::Span;
 
 /// An error that is generated when checking an incorrect macro.
 ///
