@@ -1,6 +1,10 @@
 #![allow(missing_docs)] // TODO: write docs
 
-use std::{collections::HashMap, iter};
+use std::{
+    collections::HashMap,
+    fmt::{self, Debug},
+    iter,
+};
 
 use proc_macro2::{
     Delimiter, Group as GenericGroup, Ident, Literal, Punct, Spacing, Span as GenericSpan,
@@ -9,7 +13,7 @@ use proc_macro2::{
 
 use crate::{Error, FragmentKind, MacroRuleNode};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum TokenTree {
     Ident(Ident),
     Punct(Punct),
@@ -19,14 +23,67 @@ pub enum TokenTree {
     Repetition(Repetition),
 }
 
-#[derive(Debug, Clone)]
+impl Debug for TokenTree {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TokenTree::Ident(ident) => DebugHelper(ident).fmt(f),
+            TokenTree::Punct(punct) => DebugHelper(punct).fmt(f),
+            TokenTree::Literal(literal) => DebugHelper(literal).fmt(f),
+            TokenTree::Group(group) => group.fmt(f),
+            TokenTree::Metavariable(metavariable) => metavariable.fmt(f),
+            TokenTree::Repetition(repetition) => repetition.fmt(f),
+        }
+    }
+}
+
+struct DebugHelper<T>(T);
+
+impl Debug for DebugHelper<&Ident> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Ident")
+            .field("sym", &self.0.to_string())
+            .field("span", &Span(self.0.span()))
+            .finish()
+    }
+}
+
+impl Debug for DebugHelper<&Punct> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("punct")
+            .field("ch", &self.0.as_char())
+            .field("spacing", &self.0.spacing())
+            .field("span", &Span(self.0.span()))
+            .finish()
+    }
+}
+
+impl Debug for DebugHelper<&Literal> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Literal")
+            .field("lit", &self.0.to_string())
+            .field("span", &Span(self.0.span()))
+            .finish()
+    }
+}
+
+#[derive(Clone)]
 pub struct Group {
     pub content: Vec<TokenTree>,
     pub delimiter: Delimiter,
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
+impl Debug for Group {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Group")
+            .field("delimiter", &self.delimiter)
+            .field("stream", &self.content)
+            .field("span", &self.span)
+            .finish()
+    }
+}
+
+#[derive(Clone)]
 pub struct Repetition {
     pub id: RepetitionId,
     pub dollar: Span,
@@ -38,12 +95,38 @@ pub struct Repetition {
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
+impl Debug for Repetition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Repetition")
+            .field("id", &self.id)
+            .field("dollar", &self.dollar)
+            .field("paren", &self.paren)
+            .field("stream", &self.content)
+            .field("separator", &self.separator)
+            .field("count", &self.count)
+            .field("count_span", &self.count_span)
+            .field("span", &self.span)
+            .finish()
+    }
+}
+
+#[derive(Clone)]
 pub enum Separator {
     Ident(Ident),
     Punct(Punct),
     Literal(Literal),
     None,
+}
+
+impl Debug for Separator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Separator::Ident(ident) => DebugHelper(ident).fmt(f),
+            Separator::Punct(punct) => DebugHelper(punct).fmt(f),
+            Separator::Literal(literal) => DebugHelper(literal).fmt(f),
+            Separator::None => write!(f, "None"),
+        }
+    }
 }
 
 impl Separator {
@@ -69,17 +152,29 @@ impl Separator {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RepetitionId(usize);
 
-impl std::fmt::Debug for RepetitionId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for RepetitionId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "repetition {}", self.0)
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub enum RepetitionCount {
     AtMostOne,
     ZeroOrMore,
     OneOrMore,
+}
+
+impl Debug for RepetitionCount {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let string = match self {
+            RepetitionCount::AtMostOne => "AtMostOne (?)",
+            RepetitionCount::ZeroOrMore => "ZeroOrMore (*)",
+            RepetitionCount::OneOrMore => "OneOrMore (+)",
+        };
+
+        write!(f, "{string}")
+    }
 }
 
 impl RepetitionCount {
@@ -92,7 +187,7 @@ impl RepetitionCount {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Metavariable {
     pub dollar: Span,
     pub name: Ident,
@@ -102,39 +197,47 @@ pub struct Metavariable {
     pub span: Span,
 }
 
-#[derive(Copy, Clone)]
-pub struct Span {
-    inner: GenericSpan,
+impl Debug for Metavariable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Metavariable")
+            .field("dollar", &self.dollar)
+            .field("name", &DebugHelper(&self.name))
+            .field("kind", &self.kind)
+            .field("matcher_spans", &self.matcher_spans)
+            .field("span", &self.span)
+            .finish()
+    }
 }
+
+#[derive(Copy, Clone)]
+pub struct Span(GenericSpan);
 
 impl Span {
     pub fn join(&self, other: impl Into<Span>) -> Span {
-        // This is best-effort, because in a proc macro context on stable compilers the join method
-        // is not available (as it is unstable).
-        Span {
-            inner: self.inner.join(other.into().inner).unwrap_or(self.inner),
-        }
+        // This is best-effort, because in a proc macro context on stable compilers the
+        // join method is not available (as it is unstable).
+        Span(self.0.join(other.into().0).unwrap_or(self.0))
     }
 }
 
 impl From<GenericSpan> for Span {
     fn from(inner: GenericSpan) -> Self {
-        Span { inner }
+        Span(inner)
     }
 }
 
 impl Into<GenericSpan> for Span {
     fn into(self) -> GenericSpan {
-        self.inner
+        self.0
     }
 }
 
-impl std::fmt::Debug for Span {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(text) = self.inner.source_text() {
+impl fmt::Debug for Span {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(text) = self.0.source_text() {
             write!(f, "span( {text} )")
         } else {
-            std::fmt::Debug::fmt(&self.inner, f)
+            write!(f, "no source-map available (span: {:?})", &self.0)
         }
     }
 }
@@ -565,8 +668,11 @@ mod tests {
         (fn $name:ident() { ($($matcher:tt)*) => {$($transcriber:tt)*}, $expected:expr $(,)? }) => {
             #[test]
             fn $name() {
-                let matcher = ::quote::quote! { $($matcher)* };
-                let transcriber = ::quote::quote! { $($transcriber)* };
+                let matcher = stringify!( $($matcher)* );
+                let transcriber = stringify!( $($transcriber)* );
+
+                let matcher = matcher.parse().unwrap();
+                let transcriber = transcriber.parse().unwrap();
 
                 let mut ctx = ParseCtxt::matcher();
 
@@ -622,127 +728,83 @@ mod tests {
             expect_test::expect![[r#"
                 (
                     [
-                        Ident(
-                            Ident {
-                                sym: a,
-                            },
-                        ),
-                        Literal(
-                            Literal {
-                                lit: 1,
-                                span: bytes(1..2),
-                            },
-                        ),
-                        Ident(
-                            Ident {
-                                sym: b,
-                            },
-                        ),
-                        Literal(
-                            Literal {
-                                lit: 2,
-                                span: bytes(3..4),
-                            },
-                        ),
-                        Punct(
-                            Punct {
-                                char: ';',
-                                spacing: Alone,
-                            },
-                        ),
-                        Punct(
-                            Punct {
-                                char: '+',
-                                spacing: Alone,
-                            },
-                        ),
-                        Punct(
-                            Punct {
-                                char: '@',
-                                spacing: Alone,
-                            },
-                        ),
+                        Ident {
+                            sym: "a",
+                            span: span( a ),
+                        },
+                        Literal {
+                            lit: "1",
+                            span: span( 1 ),
+                        },
+                        Ident {
+                            sym: "b",
+                            span: span( b ),
+                        },
+                        Literal {
+                            lit: "2",
+                            span: span( 2 ),
+                        },
+                        punct {
+                            ch: ';',
+                            spacing: Alone,
+                            span: span( ; ),
+                        },
+                        punct {
+                            ch: '+',
+                            spacing: Alone,
+                            span: span( + ),
+                        },
+                        punct {
+                            ch: '@',
+                            spacing: Alone,
+                            span: span( @ ),
+                        },
                     ],
                     [
-                        Ident(
-                            Ident {
-                                sym: a,
-                            },
-                        ),
-                        Literal(
-                            Literal {
-                                lit: 1,
-                                span: bytes(5..6),
-                            },
-                        ),
-                        Ident(
-                            Ident {
-                                sym: b,
-                            },
-                        ),
-                        Literal(
-                            Literal {
-                                lit: 2,
-                                span: bytes(7..8),
-                            },
-                        ),
-                        Punct(
-                            Punct {
-                                char: ';',
-                                spacing: Alone,
-                            },
-                        ),
-                        Punct(
-                            Punct {
-                                char: '+',
-                                spacing: Alone,
-                            },
-                        ),
-                        Punct(
-                            Punct {
-                                char: '@',
-                                spacing: Alone,
-                            },
-                        ),
+                        Ident {
+                            sym: "a",
+                            span: span( a ),
+                        },
+                        Literal {
+                            lit: "1",
+                            span: span( 1 ),
+                        },
+                        Ident {
+                            sym: "b",
+                            span: span( b ),
+                        },
+                        Literal {
+                            lit: "2",
+                            span: span( 2 ),
+                        },
+                        punct {
+                            ch: ';',
+                            spacing: Alone,
+                            span: span( ; ),
+                        },
+                        punct {
+                            ch: '+',
+                            spacing: Alone,
+                            span: span( + ),
+                        },
+                        punct {
+                            ch: '@',
+                            spacing: Alone,
+                            span: span( @ ),
+                        },
                     ],
                     TokenStream [
                         Ident {
                             sym: a,
-                        },
-                        Literal {
-                            lit: 1,
                             span: bytes(1..2),
                         },
-                        Ident {
-                            sym: b,
-                        },
-                        Literal {
-                            lit: 2,
-                            span: bytes(3..4),
-                        },
-                        Punct {
-                            char: ';',
-                            spacing: Alone,
-                        },
-                        Punct {
-                            char: '+',
-                            spacing: Alone,
-                        },
-                        Punct {
-                            char: '@',
-                            spacing: Alone,
-                        },
-                    ],
-                    TokenStream [
-                        Ident {
-                            sym: a,
-                        },
                         Literal {
                             lit: 1,
-                            span: bytes(5..6),
+                            span: bytes(3..4),
                         },
                         Ident {
                             sym: b,
+                            span: bytes(5..6),
                         },
                         Literal {
                             lit: 2,
@@ -751,14 +813,50 @@ mod tests {
                         Punct {
                             char: ';',
                             spacing: Alone,
+                            span: bytes(8..9),
                         },
                         Punct {
                             char: '+',
                             spacing: Alone,
+                            span: bytes(10..11),
                         },
                         Punct {
                             char: '@',
                             spacing: Alone,
+                            span: bytes(12..13),
+                        },
+                    ],
+                    TokenStream [
+                        Ident {
+                            sym: a,
+                            span: bytes(14..15),
+                        },
+                        Literal {
+                            lit: 1,
+                            span: bytes(16..17),
+                        },
+                        Ident {
+                            sym: b,
+                            span: bytes(18..19),
+                        },
+                        Literal {
+                            lit: 2,
+                            span: bytes(20..21),
+                        },
+                        Punct {
+                            char: ';',
+                            spacing: Alone,
+                            span: bytes(21..22),
+                        },
+                        Punct {
+                            char: '+',
+                            spacing: Alone,
+                            span: bytes(23..24),
+                        },
+                        Punct {
+                            char: '@',
+                            spacing: Alone,
+                            span: bytes(25..26),
                         },
                     ],
                 )
@@ -772,61 +870,55 @@ mod tests {
             expect_test::expect![[r#"
                 (
                     [
-                        Repetition(
-                            Repetition {
-                                id: repetition 0,
-                                dollar: span( $ ),
-                                paren: bytes(0..0),
-                                content: [
-                                    Metavariable(
-                                        Metavariable {
-                                            dollar: span( $ ),
-                                            name: Ident {
-                                                sym: a,
-                                            },
-                                            kind: Ident,
-                                            matcher_spans: Some(
-                                                (
-                                                    bytes(0..0),
-                                                    bytes(0..0),
-                                                ),
-                                            ),
-                                            span: span( $ ),
-                                        },
+                        Repetition {
+                            id: repetition 0,
+                            dollar: span( $ ),
+                            paren: span( ($a:ident) ),
+                            stream: [
+                                Metavariable {
+                                    dollar: span( $ ),
+                                    name: Ident {
+                                        sym: "a",
+                                        span: span( a ),
+                                    },
+                                    kind: Ident,
+                                    matcher_spans: Some(
+                                        (
+                                            span( : ),
+                                            span( ident ),
+                                        ),
                                     ),
-                                ],
-                                separator: None,
-                                count: ZeroOrMore,
-                                count_span: bytes(0..0),
-                                span: span( $ ),
-                            },
-                        ),
+                                    span: span( $a:ident ),
+                                },
+                            ],
+                            separator: None,
+                            count: ZeroOrMore (*),
+                            count_span: span( * ),
+                            span: span( $($a:ident)* ),
+                        },
                     ],
                     [
-                        Repetition(
-                            Repetition {
-                                id: repetition 1,
-                                dollar: span( $ ),
-                                paren: bytes(0..0),
-                                content: [
-                                    Metavariable(
-                                        Metavariable {
-                                            dollar: span( $ ),
-                                            name: Ident {
-                                                sym: a,
-                                            },
-                                            kind: Ident,
-                                            matcher_spans: None,
-                                            span: span( $ ),
-                                        },
-                                    ),
-                                ],
-                                separator: None,
-                                count: ZeroOrMore,
-                                count_span: bytes(0..0),
-                                span: span( $ ),
-                            },
-                        ),
+                        Repetition {
+                            id: repetition 1,
+                            dollar: span( $ ),
+                            paren: span( ($a) ),
+                            stream: [
+                                Metavariable {
+                                    dollar: span( $ ),
+                                    name: Ident {
+                                        sym: "a",
+                                        span: span( a ),
+                                    },
+                                    kind: Ident,
+                                    matcher_spans: None,
+                                    span: span( $a ),
+                                },
+                            ],
+                            separator: None,
+                            count: ZeroOrMore (*),
+                            count_span: span( * ),
+                            span: span( $($a)* ),
+                        },
                     ],
                     TokenStream [
                         Punct {
@@ -844,26 +936,31 @@ mod tests {
                                 },
                                 Ident {
                                     sym: a,
+                                    span: bytes(4..5),
                                 },
                                 Punct {
                                     char: ':',
                                     spacing: Alone,
+                                    span: bytes(5..6),
                                 },
                                 Ident {
                                     sym: ident,
+                                    span: bytes(6..11),
                                 },
                             ],
+                            span: bytes(2..12),
                         },
                         Punct {
                             char: '*',
                             spacing: Alone,
+                            span: bytes(12..13),
                         },
                     ],
                     TokenStream [
                         Punct {
                             char: '$',
                             spacing: Alone,
-                            span: bytes(5..6),
+                            span: bytes(14..15),
                         },
                         Group {
                             delimiter: Parenthesis,
@@ -871,16 +968,19 @@ mod tests {
                                 Punct {
                                     char: '$',
                                     spacing: Alone,
-                                    span: bytes(7..8),
+                                    span: bytes(16..17),
                                 },
                                 Ident {
                                     sym: a,
+                                    span: bytes(17..18),
                                 },
                             ],
+                            span: bytes(15..19),
                         },
                         Punct {
                             char: '*',
                             spacing: Alone,
+                            span: bytes(19..20),
                         },
                     ],
                 )
@@ -894,114 +994,102 @@ mod tests {
             expect_test::expect![[r#"
                 (
                     [
-                        Repetition(
-                            Repetition {
-                                id: repetition 0,
-                                dollar: span( $ ),
-                                paren: bytes(0..0),
-                                content: [
-                                    Metavariable(
+                        Repetition {
+                            id: repetition 0,
+                            dollar: span( $ ),
+                            paren: span( ($foo:ident $($bar:ident)*) ),
+                            stream: [
+                                Metavariable {
+                                    dollar: span( $ ),
+                                    name: Ident {
+                                        sym: "foo",
+                                        span: span( foo ),
+                                    },
+                                    kind: Ident,
+                                    matcher_spans: Some(
+                                        (
+                                            span( : ),
+                                            span( ident ),
+                                        ),
+                                    ),
+                                    span: span( $foo:ident ),
+                                },
+                                Repetition {
+                                    id: repetition 1,
+                                    dollar: span( $ ),
+                                    paren: span( ($bar:ident) ),
+                                    stream: [
                                         Metavariable {
                                             dollar: span( $ ),
                                             name: Ident {
-                                                sym: foo,
+                                                sym: "bar",
+                                                span: span( bar ),
                                             },
                                             kind: Ident,
                                             matcher_spans: Some(
                                                 (
-                                                    bytes(0..0),
-                                                    bytes(0..0),
+                                                    span( : ),
+                                                    span( ident ),
                                                 ),
                                             ),
-                                            span: span( $ ),
+                                            span: span( $bar:ident ),
                                         },
-                                    ),
-                                    Repetition(
-                                        Repetition {
-                                            id: repetition 1,
-                                            dollar: span( $ ),
-                                            paren: bytes(0..0),
-                                            content: [
-                                                Metavariable(
-                                                    Metavariable {
-                                                        dollar: span( $ ),
-                                                        name: Ident {
-                                                            sym: bar,
-                                                        },
-                                                        kind: Ident,
-                                                        matcher_spans: Some(
-                                                            (
-                                                                bytes(0..0),
-                                                                bytes(0..0),
-                                                            ),
-                                                        ),
-                                                        span: span( $ ),
-                                                    },
-                                                ),
-                                            ],
-                                            separator: None,
-                                            count: ZeroOrMore,
-                                            count_span: bytes(0..0),
-                                            span: span( $ ),
-                                        },
-                                    ),
-                                ],
-                                separator: None,
-                                count: ZeroOrMore,
-                                count_span: bytes(0..0),
-                                span: span( $ ),
-                            },
-                        ),
+                                    ],
+                                    separator: None,
+                                    count: ZeroOrMore (*),
+                                    count_span: span( * ),
+                                    span: span( $($bar:ident)* ),
+                                },
+                            ],
+                            separator: None,
+                            count: ZeroOrMore (*),
+                            count_span: span( * ),
+                            span: span( $($foo:ident $($bar:ident)*)* ),
+                        },
                     ],
                     [
-                        Repetition(
-                            Repetition {
-                                id: repetition 2,
-                                dollar: span( $ ),
-                                paren: bytes(0..0),
-                                content: [
-                                    Repetition(
-                                        Repetition {
-                                            id: repetition 3,
+                        Repetition {
+                            id: repetition 2,
+                            dollar: span( $ ),
+                            paren: span( ($($foo $bar)*) ),
+                            stream: [
+                                Repetition {
+                                    id: repetition 3,
+                                    dollar: span( $ ),
+                                    paren: span( ($foo $bar) ),
+                                    stream: [
+                                        Metavariable {
                                             dollar: span( $ ),
-                                            paren: bytes(0..0),
-                                            content: [
-                                                Metavariable(
-                                                    Metavariable {
-                                                        dollar: span( $ ),
-                                                        name: Ident {
-                                                            sym: foo,
-                                                        },
-                                                        kind: Ident,
-                                                        matcher_spans: None,
-                                                        span: span( $ ),
-                                                    },
-                                                ),
-                                                Metavariable(
-                                                    Metavariable {
-                                                        dollar: span( $ ),
-                                                        name: Ident {
-                                                            sym: bar,
-                                                        },
-                                                        kind: Ident,
-                                                        matcher_spans: None,
-                                                        span: span( $ ),
-                                                    },
-                                                ),
-                                            ],
-                                            separator: None,
-                                            count: ZeroOrMore,
-                                            count_span: bytes(0..0),
-                                            span: span( $ ),
+                                            name: Ident {
+                                                sym: "foo",
+                                                span: span( foo ),
+                                            },
+                                            kind: Ident,
+                                            matcher_spans: None,
+                                            span: span( $foo ),
                                         },
-                                    ),
-                                ],
-                                separator: None,
-                                count: ZeroOrMore,
-                                count_span: bytes(0..0),
-                                span: span( $ ),
-                            },
-                        ),
+                                        Metavariable {
+                                            dollar: span( $ ),
+                                            name: Ident {
+                                                sym: "bar",
+                                                span: span( bar ),
+                                            },
+                                            kind: Ident,
+                                            matcher_spans: None,
+                                            span: span( $bar ),
+                                        },
+                                    ],
+                                    separator: None,
+                                    count: ZeroOrMore (*),
+                                    count_span: span( * ),
+                                    span: span( $($foo $bar)* ),
+                                },
+                            ],
+                            separator: None,
+                            count: ZeroOrMore (*),
+                            count_span: span( * ),
+                            span: span( $($($foo $bar)*)* ),
+                        },
                     ],
                     TokenStream [
                         Punct {
@@ -1019,18 +1107,21 @@ mod tests {
                                 },
                                 Ident {
                                     sym: foo,
+                                    span: bytes(4..7),
                                 },
                                 Punct {
                                     char: ':',
                                     spacing: Alone,
+                                    span: bytes(7..8),
                                 },
                                 Ident {
                                     sym: ident,
+                                    span: bytes(8..13),
                                 },
                                 Punct {
                                     char: '$',
                                     spacing: Alone,
-                                    span: bytes(5..6),
+                                    span: bytes(14..15),
                                 },
                                 Group {
                                     delimiter: Parenthesis,
@@ -1038,36 +1129,43 @@ mod tests {
                                         Punct {
                                             char: '$',
                                             spacing: Alone,
-                                            span: bytes(7..8),
+                                            span: bytes(16..17),
                                         },
                                         Ident {
                                             sym: bar,
+                                            span: bytes(17..20),
                                         },
                                         Punct {
                                             char: ':',
                                             spacing: Alone,
+                                            span: bytes(20..21),
                                         },
                                         Ident {
                                             sym: ident,
+                                            span: bytes(21..26),
                                         },
                                     ],
+                                    span: bytes(15..27),
                                 },
                                 Punct {
                                     char: '*',
                                     spacing: Alone,
+                                    span: bytes(27..28),
                                 },
                             ],
+                            span: bytes(2..29),
                         },
                         Punct {
                             char: '*',
                             spacing: Alone,
+                            span: bytes(29..30),
                         },
                     ],
                     TokenStream [
                         Punct {
                             char: '$',
                             spacing: Alone,
-                            span: bytes(9..10),
+                            span: bytes(31..32),
                         },
                         Group {
                             delimiter: Parenthesis,
@@ -1075,7 +1173,7 @@ mod tests {
                                 Punct {
                                     char: '$',
                                     spacing: Alone,
-                                    span: bytes(11..12),
+                                    span: bytes(33..34),
                                 },
                                 Group {
                                     delimiter: Parenthesis,
@@ -1083,30 +1181,36 @@ mod tests {
                                         Punct {
                                             char: '$',
                                             spacing: Alone,
-                                            span: bytes(13..14),
+                                            span: bytes(35..36),
                                         },
                                         Ident {
                                             sym: foo,
+                                            span: bytes(36..39),
                                         },
                                         Punct {
                                             char: '$',
                                             spacing: Alone,
-                                            span: bytes(15..16),
+                                            span: bytes(40..41),
                                         },
                                         Ident {
                                             sym: bar,
+                                            span: bytes(41..44),
                                         },
                                     ],
+                                    span: bytes(34..45),
                                 },
                                 Punct {
                                     char: '*',
                                     spacing: Alone,
+                                    span: bytes(45..46),
                                 },
                             ],
+                            span: bytes(32..47),
                         },
                         Punct {
                             char: '*',
                             spacing: Alone,
+                            span: bytes(47..48),
                         },
                     ],
                 )
@@ -1120,86 +1224,68 @@ mod tests {
             expect_test::expect![[r#"
                 (
                     [
-                        Group(
-                            Group {
-                                content: [
-                                    Ident(
-                                        Ident {
-                                            sym: bracket,
-                                        },
-                                    ),
-                                ],
-                                delimiter: Bracket,
-                                span: bytes(0..0),
-                            },
-                        ),
-                        Group(
-                            Group {
-                                content: [
-                                    Ident(
-                                        Ident {
-                                            sym: brace,
-                                        },
-                                    ),
-                                ],
-                                delimiter: Brace,
-                                span: bytes(0..0),
-                            },
-                        ),
-                        Group(
-                            Group {
-                                content: [
-                                    Ident(
-                                        Ident {
-                                            sym: parethensis,
-                                        },
-                                    ),
-                                ],
-                                delimiter: Parenthesis,
-                                span: bytes(0..0),
-                            },
-                        ),
+                        Group {
+                            delimiter: Bracket,
+                            stream: [
+                                Ident {
+                                    sym: "bracket",
+                                    span: span( bracket ),
+                                },
+                            ],
+                            span: span( [bracket] ),
+                        },
+                        Group {
+                            delimiter: Brace,
+                            stream: [
+                                Ident {
+                                    sym: "brace",
+                                    span: span( brace ),
+                                },
+                            ],
+                            span: span( { brace } ),
+                        },
+                        Group {
+                            delimiter: Parenthesis,
+                            stream: [
+                                Ident {
+                                    sym: "parethensis",
+                                    span: span( parethensis ),
+                                },
+                            ],
+                            span: span( (parethensis) ),
+                        },
                     ],
                     [
-                        Group(
-                            Group {
-                                content: [
-                                    Ident(
-                                        Ident {
-                                            sym: parenthesis,
-                                        },
-                                    ),
-                                ],
-                                delimiter: Parenthesis,
-                                span: bytes(0..0),
-                            },
-                        ),
-                        Group(
-                            Group {
-                                content: [
-                                    Ident(
-                                        Ident {
-                                            sym: brace,
-                                        },
-                                    ),
-                                ],
-                                delimiter: Brace,
-                                span: bytes(0..0),
-                            },
-                        ),
-                        Group(
-                            Group {
-                                content: [
-                                    Ident(
-                                        Ident {
-                                            sym: bracket,
-                                        },
-                                    ),
-                                ],
-                                delimiter: Bracket,
-                                span: bytes(0..0),
-                            },
-                        ),
+                        Group {
+                            delimiter: Parenthesis,
+                            stream: [
+                                Ident {
+                                    sym: "parenthesis",
+                                    span: span( parenthesis ),
+                                },
+                            ],
+                            span: span( (parenthesis) ),
+                        },
+                        Group {
+                            delimiter: Brace,
+                            stream: [
+                                Ident {
+                                    sym: "brace",
+                                    span: span( brace ),
+                                },
+                            ],
+                            span: span( { brace } ),
+                        },
+                        Group {
+                            delimiter: Bracket,
+                            stream: [
+                                Ident {
+                                    sym: "bracket",
+                                    span: span( bracket ),
+                                },
+                            ],
+                            span: span( [bracket] ),
+                        },
                     ],
                     TokenStream [
                         Group {
@@ -1207,6 +1293,7 @@ mod tests {
                             stream: TokenStream [
                                 Ident {
                                     sym: bracket,
+                                    span: bytes(2..9),
                                 },
                             ],
                         },
@@ -1215,6 +1302,7 @@ mod tests {
                             stream: TokenStream [
                                 Ident {
                                     sym: brace,
+                                    span: bytes(13..18),
                                 },
                             ],
                         },
@@ -1223,6 +1311,7 @@ mod tests {
                             stream: TokenStream [
                                 Ident {
                                     sym: parethensis,
+                                    span: bytes(22..33),
                                 },
                             ],
                         },
@@ -1233,6 +1322,7 @@ mod tests {
                             stream: TokenStream [
                                 Ident {
                                     sym: parenthesis,
+                                    span: bytes(36..47),
                                 },
                             ],
                         },
@@ -1241,6 +1331,7 @@ mod tests {
                             stream: TokenStream [
                                 Ident {
                                     sym: brace,
+                                    span: bytes(51..56),
                                 },
                             ],
                         },
@@ -1249,12 +1340,47 @@ mod tests {
                             stream: TokenStream [
                                 Ident {
                                     sym: bracket,
+                                    span: bytes(60..67),
                                 },
                             ],
                         },
                     ],
                 )
             "#]]
+        }
+    }
+
+    test! {
+        fn sasha_plz_fix_this_span() {
+            (a) => { a },
+            expect_test::expect![[r#"
+                (
+                    [
+                        Ident {
+                            sym: "a",
+                            span: span( a ),
+                        },
+                    ],
+                    [
+                        Ident {
+                            sym: "a",
+                            span: span( a ),
+                        },
+                    ],
+                    TokenStream [
+                        Ident {
+                            sym: a,
+                            span: bytes(1..2),
+                        },
+                    ],
+                    TokenStream [
+                        Ident {
+                            sym: a,
+                            span: bytes(3..4),
+                        },
+                    ],
+                )
+            "#]],
         }
     }
 }
