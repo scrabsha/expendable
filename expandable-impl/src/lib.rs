@@ -122,6 +122,7 @@ fn check_arm(ctx: InvocationContext, arm: MacroArm) -> Result<(), Error> {
 
     validation::validate(&matcher, &transcriber)?;
 
+    #[expect(clippy::diverging_sub_expression)]
     let expansions: Vec<_> = todo!("Generate all the possible expansions");
 
     #[expect(unreachable_code)]
@@ -129,7 +130,6 @@ fn check_arm(ctx: InvocationContext, arm: MacroArm) -> Result<(), Error> {
         parse::check_expansion(expansion, ctx)?;
     }
 
-    #[expect(unreachable_code)]
     Ok(())
 }
 

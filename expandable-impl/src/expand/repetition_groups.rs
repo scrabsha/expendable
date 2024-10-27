@@ -255,7 +255,7 @@ enum Metavar {
     /// expanding a known input).
     ///
     /// Ghost metavariables are a way used by this module to bind the outer repetition to `$a`.
-    /// WHen analyzing the matcher, each real metavariable creates a ghost one for every higher
+    /// When analyzing the matcher, each real metavariable creates a ghost one for every higher
     /// repetition depth. Then, when we analyze repetitions, we check whether any real metavariable
     /// at a lower depth has a ghost for the current depth, and add it.
     ///
