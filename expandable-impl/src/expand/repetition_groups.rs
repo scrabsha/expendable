@@ -10,11 +10,13 @@
 //! check. For the transcriber `$($a $b)* $($a)* $($b)*`, this module shows that if the first
 //! repetition is repeated `n` times all other repetitions will only repeat exactly `n` times.
 //!
-//! Note that the grouping can only happen at the same repetition depth: a metavariable defined at
-//! depth 1 cannot be grouped with a metavariable defined at depth 2, even if they are both used
-//! inside of the same repetition. This is because a metavariable affect how many times the
-//! repetition at the metavariable *definition* depth is repeated, not how many times the
-//! repetition at the metavariable *usage* depth is repeated.
+//! Note that we can only group metavariables *defined* at the same repetition depth in the
+//! matcher, even if they are used in the transcriber at the same repetition depth.
+//!
+//! This module also handles repetitions that have no metavariables but repeat a known amount of
+//! times. For example, in the matcher `$($($a:ident),*);*`, the number of times the outer
+//! repetition repeats depends on `$a`, and is thus known. That matcher also means the transcriber
+//! `$($($a),*);*` is valid, since the outer repetition is indirectly "bound" to `$a`.
 
 // TODO: vocabulary - lower and higher depth is confusing
 
@@ -100,7 +102,8 @@ impl Grouper {
                     self.ingest(token)?;
                 }
 
-                // TODO: explain what this is.
+                // Also ingest the ghost metavariables for this repetition. See the documentation
+                // of Metavar::Ghost for a description of ghosts.
                 for metavar in self
                     .analysis
                     .ghosts
@@ -112,7 +115,8 @@ impl Grouper {
 
                 self.repetitions_stack.pop();
 
-                // Check whether there were no metavariables attached to this repetition.
+                // If there is no group for this repetition it means there were no metavariables
+                // (real or ghost), and the repetition is thus invalid.
                 if !self.by_repetition.contains_key(&repetition.id) {
                     return Err(Error::RepetitionWithoutMetavariables {
                         span: repetition.span,
@@ -224,7 +228,39 @@ impl Grouper {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
 enum Metavar {
+    /// "Real" metavariables are actually defined in the matcher.
     Real(String),
+
+    /// "Ghost" metavariables don't exist anywhere in the matcher or the transcriber, but are used
+    /// by this module to gracefully handle repetitions without any metavariable within but repeat
+    /// a known amount of times (dependent on a real metavariable).
+    ///
+    /// Let's take this macro for example:
+    ///
+    /// ```rust
+    /// macro_rules! foo {
+    ///     ($( $($a:ident),* );*) => {
+    ///         $($($a),*);*
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// With a naive analysis of that macro, the outer repetition repeats an undefined amount of
+    /// times (as there is no metavariable constraining it), and should thus be rejected. The macro
+    /// is actually allowed though, as the outer repetition is "indirectly bound" to `$a`.
+    ///
+    /// That is, when you invoke the macro the compiler sees that the outer repetition contains
+    /// `$a` nested one level deep within it, and so it understands that it corresponds to the
+    /// outer repetition in the matcher (which intrinsically repeats a known amount of time when
+    /// expanding a known input).
+    ///
+    /// Ghost metavariables are a way used by this module to bind the outer repetition to `$a`.
+    /// WHen analyzing the matcher, each real metavariable creates a ghost one for every higher
+    /// repetition depth. Then, when we analyze repetitions, we check whether any real metavariable
+    /// at a lower depth has a ghost for the current depth, and add it.
+    ///
+    /// As all repetitions with a given metavariable at a given lower depth will have the same
+    /// metavariable attached, they will be grouped together by this module.
     Ghost(usize),
 }
 
@@ -263,6 +299,7 @@ impl Analysis {
         this
     }
 
+    /// Collect metadata about all metavariables defined in the matcher.
     fn collect_metavars(&mut self, depth: usize, token: &TokenTree) {
         match token {
             TokenTree::Ident(_) => {}
@@ -284,7 +321,7 @@ impl Analysis {
                     "duplicate metavariable name {name}"
                 );
 
-                // TODO: explain what this is
+                // See the documentation of Metavar::Ghost for a description of ghosts.
                 let mut ghosts = BTreeMap::new();
                 for ghost_depth in 1..depth {
                     ghosts.insert(ghost_depth, Metavar::Ghost(self.next_ghost));
@@ -305,6 +342,11 @@ impl Analysis {
         }
     }
 
+    /// `collect_metavars` attaches the newly-created ghosts to the metavariable they are bound to,
+    /// but that is not useful to the grouper. This method walks over the token tree and instead
+    /// attaches the ghosts to each repetition they apply to.
+    ///
+    /// The return value is a list of metavariable names referenced by this token tree.
     fn distribute_ghosts(&mut self, depth: usize, token: &TokenTree) -> Vec<String> {
         let mut nested_metavars = Vec::new();
         match token {
@@ -446,6 +488,7 @@ mod tests {
 
     #[test]
     fn test_metavariable_at_lower_depth_doesnt_link_repetitions() {
+        // Groups start at 1 because group 0 is $foo.
         do_test_groups(
             "$foo:ident $($bar:ident)* $($baz:ident)*",
             "$($foo $bar)* $($foo $baz)*",
