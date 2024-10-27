@@ -1,25 +1,13 @@
 mod repetition_groups;
 
-use proc_macro2::TokenStream as GenericTokenStream;
-use syn::{Expr, Item, Stmt, Type, parse::Parse};
-
-use crate::{
-    Error, InvocationContext,
-    expand::repetition_groups::RepetitionGroups,
-    token_tree::{ParseMode, TokenTree},
-};
+use crate::{Error, expand::repetition_groups::RepetitionGroups, token_tree::TokenTree};
 
 #[expect(dead_code)]
 pub(crate) fn check_macro_arm(
     matcher: Vec<TokenTree>,
     transcriber: Vec<TokenTree>,
-    ctx: InvocationContext,
 ) -> Result<(), Error> {
-    let relevant_expansions = expand(matcher, transcriber);
-
-    for expansion in relevant_expansions {
-        check_expansion(expansion, ctx)?;
-    }
+    let _relevant_expansions = expand(matcher, transcriber);
 
     Ok(())
 }
