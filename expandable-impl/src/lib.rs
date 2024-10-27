@@ -94,6 +94,7 @@ use token_tree::{ParseCtxt, TokenTree};
 
 mod error;
 mod expand;
+mod parse;
 pub mod token_tree;
 mod validation;
 
@@ -114,14 +115,19 @@ pub fn check_macro(ctx: InvocationContext, input: TokenStream) -> Result<(), Err
 
 #[expect(unused_variables)]
 fn check_arm(ctx: InvocationContext, arm: MacroArm) -> Result<(), Error> {
-    let mut ctx = ParseCtxt::matcher();
-    let matcher = TokenTree::from_generic(&mut ctx, arm.matcher.stream)?;
-    ctx.turn_into_transcriber();
-    let transcriber = TokenTree::from_generic(&mut ctx, arm.transcriber.stream)?;
+    let mut parse_ctx = ParseCtxt::matcher();
+    let matcher = TokenTree::from_generic(&mut parse_ctx, arm.matcher.stream)?;
+    parse_ctx.turn_into_transcriber();
+    let transcriber = TokenTree::from_generic(&mut parse_ctx, arm.transcriber.stream)?;
 
     validation::validate(&matcher, &transcriber)?;
 
-    todo!("check_arm");
+    let expansions: Vec<_> = todo!("Generate all the possible expansions");
+
+    #[expect(unreachable_code)]
+    for expansion in expansions {
+        parse::check_expansion(expansion, ctx)?;
+    }
 
     #[expect(unreachable_code)]
     Ok(())
