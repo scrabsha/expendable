@@ -8,3 +8,4 @@ reorder_impl_items = true
 unstable_features = true
 style_edition = "2024"
 wrap_comments = true
+comment_width = 100

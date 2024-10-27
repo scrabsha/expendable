@@ -1,0 +1,5 @@
+error: Potentially invalid expansion. Expected `:`, `=`, `|`.
+ --> tests/ui/fail/bad_range_pattern.rs:6:15
+  |
+6 |         let $p..=0 = ();
+  |               ^^^

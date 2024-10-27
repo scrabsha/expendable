@@ -1,0 +1,5 @@
+error: Potentially invalid expansion. Expected an expression, an identifier, `!=`, `!`, `%`, `&&` or 37 others.
+ --> tests/ui/fail/my_vec.rs:9:17
+  |
+9 |           buffer->push($t);
+  |                 ^^
