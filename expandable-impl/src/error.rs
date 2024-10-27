@@ -111,14 +111,14 @@ pub enum Error {
         usage_depth: usize,
     },
 
-    /// A repetition group (nor other repetitions nested into it) doesn't refer
-    /// to any metavariable defined at the same depth in the match arm. This
-    /// means it's not possible to determine how much that repetition should
-    /// be repeated.
+    // TODO: explain
     #[non_exhaustive]
-    RepetitionWithoutMetavariables {
+    NoRepeatingMetavariables {
         /// Where the repetition is defined.
         span: Span,
+        /// The depth of the repetition.
+        depth: usize,
+        static_metavariables: Vec<StaticMetavariable>,
     },
 
     /*
@@ -178,6 +178,14 @@ impl From<syn::Error> for Error {
     fn from(error: syn::Error) -> Error {
         Error::SynError { error }
     }
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct StaticMetavariable {
+    pub name: String,
+    pub span: Span,
+    pub repeats_at_depth: usize,
 }
 
 /// Various nodes that can be expected in a `macro_rules!` invocation.

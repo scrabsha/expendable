@@ -10,8 +10,10 @@
 //! check. For the transcriber `$($a $b)* $($a)* $($b)*`, this module shows that if the first
 //! repetition is repeated `n` times all other repetitions will only repeat exactly `n` times.
 //!
-//! Note that we can only group metavariables *defined* at the same repetition depth in the
-//! matcher, even if they are used in the transcriber at the same repetition depth.
+//! Note that metavariables only repeat at the depth they were *defined* in. If a metavariable is
+//! used in a transcriber at a lower depth, it will cause the repetition at the depth it was
+//! *defined* in to repeat (so that should be grouped), and it will be treated as static at the
+//! repetition it's used at.
 //!
 //! This module also handles repetitions that have no metavariables but repeat a known amount of
 //! times. For example, in the matcher `$($($a:ident),*);*`, the number of times the outer
@@ -24,7 +26,8 @@ use std::collections::BTreeMap;
 
 use crate::{
     Error,
-    token_tree::{RepetitionId, Span, TokenTree},
+    error::StaticMetavariable,
+    token_tree::{Repetition, RepetitionId, Span, TokenTree},
 };
 
 #[derive(Debug)]
@@ -113,15 +116,13 @@ impl Grouper {
                     self.ingest_metavar(metavar, Some(repetition.id));
                 }
 
-                self.repetitions_stack.pop();
-
                 // If there is no group for this repetition it means there were no metavariables
-                // (real or ghost), and the repetition is thus invalid.
+                // (real or ghost) that were repeating inside of it.
                 if !self.by_repetition.contains_key(&repetition.id) {
-                    return Err(Error::RepetitionWithoutMetavariables {
-                        span: repetition.span,
-                    });
+                    return Err(self.prepare_no_repeating_metavariables_error(repetition));
                 }
+
+                self.repetitions_stack.pop();
             }
 
             TokenTree::Metavariable(meta) => {
@@ -223,6 +224,46 @@ impl Grouper {
         let group = GroupId(self.next_group_id);
         self.next_group_id += 1;
         group
+    }
+
+    fn prepare_no_repeating_metavariables_error(&self, repetition: &Repetition) -> Error {
+        fn recurse(grouper: &Grouper, output: &mut Vec<StaticMetavariable>, token: &TokenTree) {
+            match token {
+                TokenTree::Ident(_) | TokenTree::Punct(_) | TokenTree::Literal(_) => {}
+                TokenTree::Repetition(_) => {
+                    // For the purposes of this diagnostic we only care about this repetition.
+                }
+                TokenTree::Group(group) => {
+                    for token in &group.content {
+                        recurse(grouper, output, token);
+                    }
+                }
+                TokenTree::Metavariable(meta) => {
+                    let name = meta.name.to_string();
+                    output.push(StaticMetavariable {
+                        span: meta.span,
+                        repeats_at_depth: grouper
+                            .analysis
+                            .metavars
+                            .get(&name)
+                            .expect("metavar not analyzed")
+                            .depth,
+                        name,
+                    });
+                }
+            }
+        }
+
+        let mut static_metavariables = Vec::new();
+        for token in &repetition.content {
+            recurse(self, &mut static_metavariables, token);
+        }
+
+        Error::NoRepeatingMetavariables {
+            span: repetition.span,
+            depth: self.repetitions_stack.len(),
+            static_metavariables,
+        }
     }
 }
 
@@ -529,28 +570,39 @@ mod tests {
     }
 
     #[test]
-    fn test_repetition_with_metavariable_inside_repetition_without_one_inside_repetition_without_metavariables()
-     {
-        // TODO: find a better name for this test lmao
-        // TODO: it points to the wrong span???
-        do_test_groups("$($($a:ident)*)*", "$($($($a)*)*)*", expect! {[r#"
-            Err(
-                RepetitionWithoutMetavariables {
-                    span: span( $($a)* ),
-                },
-            )
-        "#]});
-    }
-
-    #[test]
     fn test_repetition_without_metavariables() {
         do_test_groups("", "$(1,)*", expect![[r#"
             Err(
-                RepetitionWithoutMetavariables {
+                NoRepeatingMetavariables {
                     span: span( $(1,)* ),
+                    depth: 1,
+                    static_metavariables: [],
                 },
             )
         "#]]);
+    }
+
+    #[test]
+    fn test_repetition_without_repeating_metavariables() {
+        do_test_groups(
+            "$($foo:ident)* $($bar:ident)*",
+            "$($foo $($bar)*)*",
+            expect![[r#"
+                Err(
+                    NoRepeatingMetavariables {
+                        span: span( $($bar)* ),
+                        depth: 2,
+                        static_metavariables: [
+                            StaticMetavariable {
+                                name: "bar",
+                                span: span( $bar ),
+                                repeats_at_depth: 1,
+                            },
+                        ],
+                    },
+                )
+            "#]],
+        );
     }
 
     #[test]
