@@ -22,7 +22,7 @@
     clippy::used_underscore_binding,
     clippy::wildcard_imports
 )]
-#![expect(clippy::result_large_err)]
+#![expect(clippy::result_large_err, missing_docs)]
 
 //! <div class="title-block" style="text-align: center;" align="center">
 //! <h1><code>expandable-impl</code></h1>
