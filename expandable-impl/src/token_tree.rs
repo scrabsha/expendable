@@ -579,7 +579,7 @@ impl TokenTree {
             }
 
             TokenTree::Metavariable(metavariable) if mode == ParseMode::Matcher => {
-                let mut dollar = Punct::new('$', Spacing::Alone);
+                let mut dollar = Punct::new('$', Spacing::Joint);
                 dollar.set_span(metavariable.dollar.into());
                 let dollar = GenericTokenTree::Punct(dollar);
 
@@ -589,7 +589,7 @@ impl TokenTree {
                     .matcher_spans
                     .expect("Attempt to convert a transcriber stream into a matcher stream");
 
-                let mut colon = Punct::new(':', Spacing::Alone);
+                let mut colon = Punct::new(':', Spacing::Joint);
                 colon.set_span(colon_span.into());
                 let colon = GenericTokenTree::Punct(colon);
 
@@ -600,7 +600,7 @@ impl TokenTree {
             }
 
             TokenTree::Metavariable(metavariable) => {
-                let mut dollar = Punct::new('$', Spacing::Alone);
+                let mut dollar = Punct::new('$', Spacing::Joint);
                 dollar.set_span(metavariable.dollar.into());
                 let dollar = GenericTokenTree::Punct(dollar);
 
@@ -616,7 +616,7 @@ impl TokenTree {
 
             TokenTree::Repetition(repetition) => {
                 // $
-                let mut dollar = Punct::new('$', Spacing::Alone);
+                let mut dollar = Punct::new('$', Spacing::Joint);
                 dollar.set_span(repetition.dollar.into());
                 let dollar = GenericTokenTree::Punct(dollar);
 
@@ -920,7 +920,7 @@ mod tests {
                     TokenStream [
                         Punct {
                             char: '$',
-                            spacing: Alone,
+                            spacing: Joint,
                             span: bytes(1..2),
                         },
                         Group {
@@ -928,7 +928,7 @@ mod tests {
                             stream: TokenStream [
                                 Punct {
                                     char: '$',
-                                    spacing: Alone,
+                                    spacing: Joint,
                                     span: bytes(3..4),
                                 },
                                 Ident {
@@ -937,7 +937,7 @@ mod tests {
                                 },
                                 Punct {
                                     char: ':',
-                                    spacing: Alone,
+                                    spacing: Joint,
                                     span: bytes(5..6),
                                 },
                                 Ident {
@@ -956,7 +956,7 @@ mod tests {
                     TokenStream [
                         Punct {
                             char: '$',
-                            spacing: Alone,
+                            spacing: Joint,
                             span: bytes(14..15),
                         },
                         Group {
@@ -964,7 +964,7 @@ mod tests {
                             stream: TokenStream [
                                 Punct {
                                     char: '$',
-                                    spacing: Alone,
+                                    spacing: Joint,
                                     span: bytes(16..17),
                                 },
                                 Ident {
@@ -1091,7 +1091,7 @@ mod tests {
                     TokenStream [
                         Punct {
                             char: '$',
-                            spacing: Alone,
+                            spacing: Joint,
                             span: bytes(1..2),
                         },
                         Group {
@@ -1099,7 +1099,7 @@ mod tests {
                             stream: TokenStream [
                                 Punct {
                                     char: '$',
-                                    spacing: Alone,
+                                    spacing: Joint,
                                     span: bytes(3..4),
                                 },
                                 Ident {
@@ -1108,7 +1108,7 @@ mod tests {
                                 },
                                 Punct {
                                     char: ':',
-                                    spacing: Alone,
+                                    spacing: Joint,
                                     span: bytes(7..8),
                                 },
                                 Ident {
@@ -1117,7 +1117,7 @@ mod tests {
                                 },
                                 Punct {
                                     char: '$',
-                                    spacing: Alone,
+                                    spacing: Joint,
                                     span: bytes(14..15),
                                 },
                                 Group {
@@ -1125,7 +1125,7 @@ mod tests {
                                     stream: TokenStream [
                                         Punct {
                                             char: '$',
-                                            spacing: Alone,
+                                            spacing: Joint,
                                             span: bytes(16..17),
                                         },
                                         Ident {
@@ -1134,7 +1134,7 @@ mod tests {
                                         },
                                         Punct {
                                             char: ':',
-                                            spacing: Alone,
+                                            spacing: Joint,
                                             span: bytes(20..21),
                                         },
                                         Ident {
@@ -1161,7 +1161,7 @@ mod tests {
                     TokenStream [
                         Punct {
                             char: '$',
-                            spacing: Alone,
+                            spacing: Joint,
                             span: bytes(31..32),
                         },
                         Group {
@@ -1169,7 +1169,7 @@ mod tests {
                             stream: TokenStream [
                                 Punct {
                                     char: '$',
-                                    spacing: Alone,
+                                    spacing: Joint,
                                     span: bytes(33..34),
                                 },
                                 Group {
@@ -1177,7 +1177,7 @@ mod tests {
                                     stream: TokenStream [
                                         Punct {
                                             char: '$',
-                                            spacing: Alone,
+                                            spacing: Joint,
                                             span: bytes(35..36),
                                         },
                                         Ident {
@@ -1186,7 +1186,7 @@ mod tests {
                                         },
                                         Punct {
                                             char: '$',
-                                            spacing: Alone,
+                                            spacing: Joint,
                                             span: bytes(40..41),
                                         },
                                         Ident {
