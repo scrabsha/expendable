@@ -438,7 +438,7 @@ struct MetavarAnalysis {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, fmt::Debug};
 
     use expect_test::{Expect, expect};
 
@@ -447,20 +447,26 @@ mod tests {
 
     #[test]
     fn test_no_metavariables() {
-        do_test_groups("foo", "bar", expect!["<nothing>"]);
+        do_test_groups("foo", "bar", expect![[r#"
+            {}
+        "#]]);
     }
 
     #[test]
     fn test_metavariable_outside_repetition() {
-        do_test_groups("$foo:ident", "$foo", expect!["<nothing>"]);
+        do_test_groups("$foo:ident", "$foo", expect![[r#"
+            {}
+        "#]]);
     }
 
     #[test]
     fn test_one_metavariable() {
         do_test_groups("$($foo:ident),*", "$($foo),*", expect![[r#"
-                span( $($foo:ident),* ) => group 0
-                span( $($foo),* )       => group 0
-            "#]]);
+            {
+                span( $($foo:ident),* ) => group 0,
+                span( $($foo),* )       => group 0,
+            }
+        "#]]);
     }
 
     #[test]
@@ -469,10 +475,12 @@ mod tests {
             "$($foo:ident)* $($bar:ident)*",
             "$($foo)* $($bar)*",
             expect![[r#"
-                span( $($foo:ident)* ) => group 0
-                span( $($bar:ident)* ) => group 1
-                span( $($foo)* )       => group 0
-                span( $($bar)* )       => group 1
+                {
+                    span( $($foo:ident)* ) => group 0,
+                    span( $($bar:ident)* ) => group 1,
+                    span( $($foo)* )       => group 0,
+                    span( $($bar)* )       => group 1,
+                }
             "#]],
         );
     }
@@ -481,10 +489,12 @@ mod tests {
     fn test_two_repetitions_in_matcher_and_one_in_transcriber() {
         do_test_groups("$($foo:ident)* $($bar:ident)*", "$($foo $bar)*", expect![[
             r#"
-                span( $($foo:ident)* ) => group 1
-                span( $($bar:ident)* ) => group 1
-                span( $($foo $bar)* )  => group 1
-            "#
+            {
+                span( $($foo:ident)* ) => group 1,
+                span( $($bar:ident)* ) => group 1,
+                span( $($foo $bar)* )  => group 1,
+            }
+        "#
         ]]);
     }
 
@@ -492,10 +502,12 @@ mod tests {
     fn test_one_repetition_in_matcher_and_two_in_transcriber() {
         do_test_groups("$($foo:ident $bar:ident)*", "$($foo)* $($bar)*", expect![[
             r#"
-                span( $($foo:ident $bar:ident)* ) => group 0
-                span( $($foo)* )                  => group 0
-                span( $($bar)* )                  => group 0
-            "#
+            {
+                span( $($foo:ident $bar:ident)* ) => group 0,
+                span( $($foo)* )                  => group 0,
+                span( $($bar)* )                  => group 0,
+            }
+        "#
         ]]);
     }
 
@@ -505,10 +517,12 @@ mod tests {
             "$($foo:ident $($bar:ident)*)*",
             "$($foo $($bar)*)*",
             expect![[r#"
-                span( $($foo:ident $($bar:ident)*)* ) => group 0
-                span( $($bar:ident)* )                => group 1
-                span( $($foo $($bar)*)* )             => group 0
-                span( $($bar)* )                      => group 1
+                {
+                    span( $($foo:ident $($bar:ident)*)* ) => group 0,
+                    span( $($bar:ident)* )                => group 1,
+                    span( $($foo $($bar)*)* )             => group 0,
+                    span( $($bar)* )                      => group 1,
+                }
             "#]],
         );
     }
@@ -519,10 +533,12 @@ mod tests {
             "$($foo:ident $($bar:ident)*)* $baz:ident",
             "$($($foo $bar $baz)*)*",
             expect![[r#"
-                span( $($foo:ident $($bar:ident)*)* ) => group 0
-                span( $($bar:ident)* )                => group 1
-                span( $($($foo $bar $baz)*)* )        => group 0
-                span( $($foo $bar $baz)* )            => group 1
+                {
+                    span( $($foo:ident $($bar:ident)*)* ) => group 0,
+                    span( $($bar:ident)* )                => group 1,
+                    span( $($($foo $bar $baz)*)* )        => group 0,
+                    span( $($foo $bar $baz)* )            => group 1,
+                }
             "#]],
         );
     }
@@ -534,10 +550,12 @@ mod tests {
             "$foo:ident $($bar:ident)* $($baz:ident)*",
             "$($foo $bar)* $($foo $baz)*",
             expect![[r#"
-                span( $($bar:ident)* ) => group 1
-                span( $($baz:ident)* ) => group 2
-                span( $($foo $bar)* )  => group 1
-                span( $($foo $baz)* )  => group 2
+                {
+                    span( $($bar:ident)* ) => group 1,
+                    span( $($baz:ident)* ) => group 2,
+                    span( $($foo $bar)* )  => group 1,
+                    span( $($foo $baz)* )  => group 2,
+                }
             "#]],
         );
     }
@@ -560,12 +578,14 @@ mod tests {
     #[test]
     fn test_repetition_with_metavariable_inside_repetition_without_one() {
         do_test_groups("$($($a:ident)*)*", "$($($a)*)* $($($a)*)*", expect! {[r#"
-            span( $($($a:ident)*)* ) => group 1
-            span( $($a:ident)* )     => group 0
-            span( $($($a)*)* )       => group 1
-            span( $($a)* )           => group 0
-            span( $($($a)*)* )       => group 1
-            span( $($a)* )           => group 0
+            {
+                span( $($($a:ident)*)* ) => group 1,
+                span( $($a:ident)* )     => group 0,
+                span( $($($a)*)* )       => group 1,
+                span( $($a)* )           => group 0,
+                span( $($($a)*)* )       => group 1,
+                span( $($a)* )           => group 0,
+            }
         "#]});
     }
 
@@ -606,13 +626,12 @@ mod tests {
     }
 
     #[test]
-    fn test_ghost_metavars_for_repetitions() {
-        // TODO: better rendering for this
+    fn test_analysis() {
         do_test_analysis(
             "foo $($($a:ident)* $($b:ident $($c:ident)* bar)*)* $($d:ident $($e:ident baz)*)*",
             "$($($a)* $($b $($c)*)*)* $($d $($e)*)*",
             expect![[r#"
-                Analysis {
+                TestAnalysis {
                     metavars: {
                         "a": MetavarAnalysis {
                             span: span( $a:ident ),
@@ -650,51 +669,43 @@ mod tests {
                         },
                     },
                     ghosts: {
-                        repetition 0: [
+                        span( $($($a:ident)* $($b:ident $($c:ident)* bar)*)* ) => [
                             ghost(0),
                             ghost(1),
                             ghost(2),
                         ],
-                        repetition 1: [],
-                        repetition 2: [
+                        span( $($a:ident)* ) => [],
+                        span( $($b:ident $($c:ident)* bar)* ) => [
                             ghost(3),
                         ],
-                        repetition 3: [],
-                        repetition 4: [
+                        span( $($c:ident)* ) => [],
+                        span( $($d:ident $($e:ident baz)*)* ) => [
                             ghost(4),
                         ],
-                        repetition 5: [],
-                        repetition 6: [
+                        span( $($e:ident baz)* ) => [],
+                        span( $($($a)* $($b $($c)*)*)* ) => [
                             ghost(0),
                             ghost(1),
                             ghost(2),
                         ],
-                        repetition 7: [],
-                        repetition 8: [
+                        span( $($a)* ) => [],
+                        span( $($b $($c)*)* ) => [
                             ghost(3),
                         ],
-                        repetition 9: [],
-                        repetition 10: [
+                        span( $($c)* ) => [],
+                        span( $($d $($e)*)* ) => [
                             ghost(4),
                         ],
-                        repetition 11: [],
+                        span( $($e)* ) => [],
                     },
-                    next_ghost: 5,
                 }
             "#]],
         );
     }
 
     fn do_test_groups(matcher: &str, transcriber: &str, expect: Expect) {
-        let mut ctx = ParseCtxt::matcher();
-        let matcher = TokenTree::from_generic(&mut ctx, matcher.parse().unwrap()).unwrap();
-        ctx.turn_into_transcriber();
-        let transcriber = TokenTree::from_generic(&mut ctx, transcriber.parse().unwrap()).unwrap();
-
-        let mut repetition_spans = HashMap::new();
-        for token in matcher.iter().chain(transcriber.iter()) {
-            find_repetition_spans(&mut repetition_spans, token);
-        }
+        let (matcher, transcriber) = parse(matcher, transcriber);
+        let repetition_spans = RepetitionSpans::new(&matcher, &transcriber);
 
         let groups = match RepetitionGroups::new(&matcher, &transcriber) {
             Ok(groups) => groups,
@@ -704,61 +715,128 @@ mod tests {
             }
         };
 
-        let lines = groups
-            .by_repetition
-            .iter()
-            .map(|(repetition, group)| {
-                (
-                    format!("{:?}", &repetition_spans[repetition]),
-                    format!("{group:?}"),
-                )
-            })
-            .collect::<Vec<_>>();
-        let first_column_len = lines
-            .iter()
-            .map(|(repetition, _)| repetition.len())
-            .max()
-            .unwrap_or(0);
-
-        let mut assertable = String::new();
-        for (repetition, group) in lines {
-            assertable.push_str(&format!("{repetition:first_column_len$} => {group}\n"));
-        }
-
-        if assertable.is_empty() {
-            assertable = "<nothing>".into();
-        }
-
-        expect.assert_eq(&assertable);
+        expect.assert_debug_eq(&CorrelateToRepetition {
+            spans: repetition_spans,
+            items: groups.by_repetition,
+            align: true,
+        });
     }
 
     fn do_test_analysis(matcher: &str, transcriber: &str, expect: Expect) {
+        let (matcher, transcriber) = parse(matcher, transcriber);
+        let repetition_spans = RepetitionSpans::new(&matcher, &transcriber);
+        let analysis = Analysis::gather(&matcher, &transcriber);
+
+        #[derive(Debug)]
+        #[allow(dead_code)]
+        struct TestAnalysis {
+            metavars: BTreeMap<String, MetavarAnalysis>,
+            ghosts: CorrelateToRepetition<Vec<Metavar>>,
+        }
+
+        expect.assert_debug_eq(&TestAnalysis {
+            metavars: analysis.metavars,
+            ghosts: CorrelateToRepetition {
+                spans: repetition_spans,
+                items: analysis.ghosts,
+                align: false,
+            },
+        });
+    }
+
+    fn parse(matcher: &str, transcriber: &str) -> (Vec<TokenTree>, Vec<TokenTree>) {
         let mut ctx = ParseCtxt::matcher();
         let matcher = TokenTree::from_generic(&mut ctx, matcher.parse().unwrap()).unwrap();
         ctx.turn_into_transcriber();
         let transcriber = TokenTree::from_generic(&mut ctx, transcriber.parse().unwrap()).unwrap();
 
-        let analysis = Analysis::gather(&matcher, &transcriber);
-        expect.assert_debug_eq(&analysis);
+        (matcher, transcriber)
     }
 
-    fn find_repetition_spans(spans: &mut HashMap<RepetitionId, Span>, token: &TokenTree) {
-        match token {
-            TokenTree::Ident(_)
-            | TokenTree::Punct(_)
-            | TokenTree::Literal(_)
-            | TokenTree::Metavariable(_) => {}
-            TokenTree::Group(group) => {
-                for token in &group.content {
-                    find_repetition_spans(spans, token);
+    struct RepetitionSpans {
+        spans: HashMap<RepetitionId, Span>,
+    }
+
+    impl RepetitionSpans {
+        fn new(matcher: &[TokenTree], transcriber: &[TokenTree]) -> Self {
+            let mut this = RepetitionSpans {
+                spans: HashMap::new(),
+            };
+            for token in matcher.iter().chain(transcriber.iter()) {
+                this.analyze(token);
+            }
+            this
+        }
+
+        fn analyze(&mut self, token: &TokenTree) {
+            match token {
+                TokenTree::Ident(_)
+                | TokenTree::Punct(_)
+                | TokenTree::Literal(_)
+                | TokenTree::Metavariable(_) => {}
+                TokenTree::Group(group) => {
+                    for token in &group.content {
+                        self.analyze(token);
+                    }
+                }
+                TokenTree::Repetition(repetition) => {
+                    self.spans.insert(repetition.id, repetition.span);
+                    for token in &repetition.content {
+                        self.analyze(token);
+                    }
                 }
             }
-            TokenTree::Repetition(repetition) => {
-                spans.insert(repetition.id, repetition.span);
-                for token in &repetition.content {
-                    find_repetition_spans(spans, token);
+        }
+
+        fn span(&self, repetition: RepetitionId) -> Span {
+            self.spans[&repetition].clone()
+        }
+    }
+
+    struct CorrelateToRepetition<T: Debug> {
+        spans: RepetitionSpans,
+        items: BTreeMap<RepetitionId, T>,
+        align: bool,
+    }
+
+    impl<T: Debug> Debug for CorrelateToRepetition<T> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            struct Entry<T: Debug> {
+                key: String,
+                value: T,
+                first_column_len: usize,
+            }
+
+            impl<T: Debug> Debug for Entry<T> {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    f.write_str(&format!(
+                        "{:width$} => ",
+                        self.key,
+                        width = self.first_column_len
+                    ))?;
+                    Debug::fmt(&self.value, f)
                 }
             }
+
+            let mut lines = Vec::new();
+            let mut first_column_len = 0;
+            for (repetition, item) in &self.items {
+                let repetition = format!("{:?}", &self.spans.span(*repetition));
+                first_column_len = first_column_len.max(repetition.len());
+                lines.push((repetition, item));
+            }
+
+            if !self.align {
+                first_column_len = 0;
+            }
+
+            f.debug_set()
+                .entries(lines.into_iter().map(|(key, value)| Entry {
+                    key,
+                    value,
+                    first_column_len,
+                }))
+                .finish()
         }
     }
 }
