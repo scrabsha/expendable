@@ -2,8 +2,6 @@
 members = [
     "",
     "expandable-impl",
-    "grammar-gen",
-    "rust-grammar-dpdfa"
 ]
 
 [workspace.package]
@@ -16,8 +14,6 @@ repository = "https://github.com/scrabsha/expandable"
 [workspace.dependencies]
 # MSRV: 1.70 (checked in CI)
 expandable-impl = { path = "expandable-impl", version = "0.1.1" }
-# MSRV: 1.70 (checked in CI)
-rust-grammar-dpdfa = { path = "rust-grammar-dpdfa", version = "0.1.1" }
 
 [package]
 name = "expandable"

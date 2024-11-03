@@ -1,7 +1,7 @@
 // Architectural invariant: this module contains types that are useful for error
 // reporting and nothing else.
 
-use crate::{RepetitionQuantifierKind, Terminal, grammar::TokenDescription};
+use crate::token_tree::{Span, TokenTree};
 
 /// An error that is generated when checking an incorrect macro.
 ///
@@ -14,8 +14,8 @@ use crate::{RepetitionQuantifierKind, Terminal, grammar::TokenDescription};
 /// [`check_macro`]: crate::check_macro
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum Error<Span> {
-    /// Generated when the macro definition itself doesn't parse correctly.
+pub enum Error {
+    /// Generated when one of the matcher or transcriber does not parse.
     ///
     /// The Rust compiler is likely to emit an error anyway. Below is an
     /// example of code that triggers this error:
@@ -37,6 +37,26 @@ pub enum Error<Span> {
         where_: Span,
     },
 
+    /// Generated when the macro arms don't parse.
+    ///
+    /// The Rust compiler is likely to emit an error anyway. Below is an
+    /// example of code that triggers this error:
+    ///
+    /// ```rust,compile_fail
+    /// macro_rules! blatant_error {
+    ///     () => =>;
+    ///     //    |
+    ///     //    error: macro rhs must be delimited.
+    /// }
+    /// ```
+    ///
+    /// This prevents us from doing any analyses.
+    #[non_exhaustive]
+    SynError {
+        /// The exact error that `syn` returned to us.
+        error: syn::Error,
+    },
+
     /// An EOF was reached when it was not expected.
     #[non_exhaustive]
     UnexpectedEnd {
@@ -54,11 +74,11 @@ pub enum Error<Span> {
         /// Where the error happens.
         span: Span,
         /// What tokens are expected here.
-        expected: Vec<TokenDescription>,
+        expected: Vec<TokenTree>,
         /// A possible expansion of the macro that exhibits a parsing error.
         ///
         /// The expansion may contain fragments.
-        counter_example: Vec<(TokenDescription, Span)>,
+        counter_example: Vec<TokenTree>,
     },
 
     /// A macro expansion refers to a metavariable that is not defined in the
@@ -74,6 +94,34 @@ pub enum Error<Span> {
         where_: Span,
     },
 
+    /// A metavariable is defined at a lower depth than it is used at. At any
+    /// given repetition depth, it is only possible to use metavariables
+    /// defined at the same or higher depth.
+    #[non_exhaustive]
+    MetavariableDefinedAtLowerDepth {
+        /// The name of the metavariable that was used.
+        name: String,
+        /// Where it was defined.
+        definition_span: Span,
+        /// Where it was used.
+        usage_span: Span,
+        /// The depth at which the metavariable was defined.
+        definition_depth: usize,
+        /// The depth at which the metavariable was used.
+        usage_depth: usize,
+    },
+
+    // TODO: explain
+    #[non_exhaustive]
+    NoRepeatingMetavariables {
+        /// Where the repetition is defined.
+        span: Span,
+        /// The depth of the repetition.
+        depth: usize,
+        static_metavariables: Vec<StaticMetavariable>,
+    },
+
+    /*
     /// A variable is being repeated with a sequence of operator that does not
     /// match the one used when the variable was declared.
     ///
@@ -109,10 +157,39 @@ pub enum Error<Span> {
         /// The nesting encountered when the metavariable was used.
         got_nesting: Vec<RepetitionQuantifierKind>,
     },
+    */
+    /// When an invalid repetition separator is being used.
+    ///
+    /// This corresponds to the following situation:
+    ///
+    /// ```rust,compile_fail
+    /// $( /* tokens */ )()*
+    /// ```
+    ///
+    /// The only valid repetition separators are punctuations, idents and
+    /// literals.
+    InvalidSeparator {
+        /// The tree that is being wrongly repeated.
+        tree: TokenTree,
+    },
+}
+
+impl From<syn::Error> for Error {
+    fn from(error: syn::Error) -> Error {
+        Error::SynError { error }
+    }
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct StaticMetavariable {
+    pub name: String,
+    pub span: Span,
+    pub repeats_at_depth: usize,
 }
 
 /// Various nodes that can be expected in a `macro_rules!` invocation.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum MacroRuleNode {
     /// A matcher (everything that comes _before_ the `=>` of a macro rule.
@@ -132,5 +209,5 @@ pub enum MacroRuleNode {
     /// A repetition separator (the `,` in `$( $expr ),*`).
     RepetitionSeparator,
     /// Any terminal.
-    Terminal(Terminal),
+    Terminal(TokenTree),
 }
